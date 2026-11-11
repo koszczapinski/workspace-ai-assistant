@@ -47,3 +47,17 @@ Tests must use a fake provider or a controlled stream. They must not require a r
 ## Quality and merge
 
 Run the documented quality checks before considering a change done. A human reviews the work and approves the merge. Do not merge unless the owner explicitly asks you to merge.
+
+## Agent skills
+
+### Issue tracker
+
+Issues are local Markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+The default five canonical triage labels are used. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This repository uses a single-context domain-doc layout. See `docs/agents/domain.md`.
