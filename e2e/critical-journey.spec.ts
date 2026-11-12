@@ -17,7 +17,7 @@ test('a member signs in, opens their workspace, and sees a streamed answer', asy
 
   await page.getByLabel('Message').fill('Plan a short demo');
   await page.getByRole('button', { name: 'Send' }).click();
-  const response = page.locator('article').filter({ hasText: 'Assistant' }).locator('p');
+  const response = page.locator('article[aria-label="Assistant response"] p.whitespace-pre-wrap');
   await expect(response).toContainText('Demo response:');
   await expect(response).toContainText('Plan a short demo');
 
