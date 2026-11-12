@@ -1,7 +1,7 @@
 import { convertToModelMessages, streamText } from 'ai';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { requireWorkspaceMembership } from '@/lib/authorization';
+import { authorizeWorkspace } from '@/lib/authorization';
 import { model } from '@/lib/provider';
 
 const messageSchema = z.object({
@@ -24,10 +24,12 @@ export async function POST(req: Request) {
   if (!parsed.success || parsed.data.messages.at(-1)?.role !== 'user' || !parsed.data.messages.at(-1)?.parts.some(p => p.text.trim())) {
     return Response.json({ error: 'Invalid or empty message' }, { status: 400 });
   }
-  const workspace = await requireWorkspaceMembership(session.user.id, parsed.data.workspaceId);
-  if (!workspace) return Response.json({ error: 'Forbidden' }, { status: 403 });
+  const access = await authorizeWorkspace(parsed.data.workspaceId);
+  if (access.kind === 'unavailable') return Response.json({ error: 'Authentication unavailable' }, { status: 503 });
+  if (access.kind === 'unauthenticated') return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  if (access.kind === 'forbidden') return Response.json({ error: 'Forbidden' }, { status: 403 });
   try {
-    const result = streamText({ model: model(), system: workspace.assistantInstructions, messages: await convertToModelMessages(parsed.data.messages) });
+    const result = streamText({ model: model(), system: access.workspace.assistantInstructions, messages: await convertToModelMessages(parsed.data.messages) });
     return result.toUIMessageStreamResponse();
   } catch { return Response.json({ error: 'Assistant unavailable' }, { status: 503 }); }
 }

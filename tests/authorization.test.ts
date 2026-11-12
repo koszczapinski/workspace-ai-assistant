@@ -1,17 +1,50 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const query = vi.fn();
-vi.mock('../src/lib/workspaces', () => ({ authorizedWorkspace: (...args: unknown[]) => query(...args) }));
-import { requireWorkspaceMembership } from '../src/lib/authorization';
+
+const { getSession, query, requestHeaders } = vi.hoisted(() => ({
+  getSession: vi.fn(),
+  query: vi.fn(),
+  requestHeaders: vi.fn(),
+}));
+
+vi.mock('next/headers', () => ({ headers: requestHeaders }));
+vi.mock('../src/lib/auth', () => ({
+  auth: { api: { getSession } },
+}));
+vi.mock('../src/lib/workspaces', () => ({ authorizedWorkspace: query }));
+
+import { authorizeWorkspace } from '../src/lib/authorization';
 
 describe('workspace authorization', () => {
- beforeEach(() => query.mockReset());
- it('returns only the workspace authorized for the session user', async () => {
-  query.mockResolvedValue({ id: 'workspace-a', name: 'A', assistantInstructions: 'A only' });
-  await expect(requireWorkspaceMembership('user-a', 'workspace-a')).resolves.toMatchObject({ id: 'workspace-a' });
-  expect(query).toHaveBeenCalledWith('user-a', 'workspace-a');
- });
- it('denies a workspace without a matching membership', async () => {
-  query.mockResolvedValue(null);
-  await expect(requireWorkspaceMembership('user-a', 'workspace-b')).resolves.toBeNull();
- });
+  beforeEach(() => {
+    getSession.mockReset();
+    query.mockReset();
+    requestHeaders.mockReset().mockResolvedValue(new Headers());
+  });
+
+  it('uses the authenticated session identity to authorize membership', async () => {
+    getSession.mockResolvedValue({ user: { id: 'user-a' } });
+    query.mockResolvedValue({ id: 'workspace-a', name: 'A', assistantInstructions: 'A only' });
+
+    await expect(authorizeWorkspace('workspace-a')).resolves.toEqual({
+      kind: 'authorized',
+      workspace: { id: 'workspace-a', name: 'A', assistantInstructions: 'A only' },
+    });
+    expect(getSession).toHaveBeenCalledWith({ headers: expect.any(Headers) });
+    expect(query).toHaveBeenCalledWith('user-a', 'workspace-a');
+  });
+
+  it('denies anonymous requests without querying workspace membership', async () => {
+    getSession.mockResolvedValue(null);
+
+    await expect(authorizeWorkspace('workspace-a')).resolves.toEqual({ kind: 'unauthenticated' });
+    expect(query).not.toHaveBeenCalled();
+  });
+
+  it('denies a workspace with no membership for the session user', async () => {
+    getSession.mockResolvedValue({ user: { id: 'user-a' } });
+    query.mockResolvedValue(null);
+
+    await expect(authorizeWorkspace('workspace-b')).resolves.toEqual({ kind: 'forbidden' });
+    expect(query).toHaveBeenCalledWith('user-a', 'workspace-b');
+  });
 });
