@@ -24,6 +24,7 @@ jobs:
           --health-retries 5
     env:
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/workspace_ai_test
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/workspace_ai_test
       BETTER_AUTH_SECRET: ci-only-secret-that-is-not-used-outside-this-job
       BETTER_AUTH_URL: http://localhost:3000
       DEMO_USER_A_EMAIL: user-a@example.test

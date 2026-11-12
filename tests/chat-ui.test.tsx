@@ -1,8 +1,11 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import '@testing-library/jest-dom/vitest';
 import { createUIMessageStream, createUIMessageStreamResponse, DefaultChatTransport } from 'ai';
-import { expect, it } from 'vitest';
+import { afterEach, expect, it } from 'vitest';
 import Chat from '@/app/w/[workspaceId]/chat';
+
+afterEach(cleanup);
 
 it('renders a deliberately delayed assistant stream incrementally', async () => {
   const transport = new DefaultChatTransport({
@@ -33,4 +36,37 @@ it('renders a deliberately delayed assistant stream incrementally', async () => 
   await waitFor(() => expect(screen.getByText('First part second part')).toBeTruthy());
   expect(screen.getByText('You')).toBeTruthy();
   expect(screen.getByText('Assistant')).toBeTruthy();
+});
+
+it('keeps the live status stable while streamed tokens update', async () => {
+  let finishStream = () => {};
+  const streamCompletion = new Promise<void>(resolve => { finishStream = resolve; });
+  const transport = new DefaultChatTransport({
+    api: '/api/chat',
+    body: { workspaceId: 'workspace-a' },
+    fetch: async () => createUIMessageStreamResponse({
+      stream: createUIMessageStream({
+        execute: async ({ writer }) => {
+          writer.write({ type: 'text-start', id: 'assistant-response' });
+          writer.write({ type: 'text-delta', id: 'assistant-response', delta: 'First' });
+          await new Promise(resolve => setTimeout(resolve, 40));
+          writer.write({ type: 'text-delta', id: 'assistant-response', delta: ' second' });
+          await streamCompletion;
+          writer.write({ type: 'text-end', id: 'assistant-response' });
+        },
+      }),
+    }),
+  });
+  render(<Chat id="workspace-a" name="Workspace A" transport={transport} />);
+
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Hello' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+  await screen.findByText('First');
+  const status = screen.getByRole('status');
+  expect(status).toHaveTextContent('Assistant is responding…');
+  await screen.findByText('First second');
+  expect(screen.getByRole('status')).toBe(status);
+  expect(status).toHaveTextContent('Assistant is responding…');
+  finishStream();
 });

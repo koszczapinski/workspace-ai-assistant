@@ -21,6 +21,8 @@ Requirements: Node.js 20+, PostgreSQL, and a local database named `workspace_ai`
 
 The repeatable seed creates User A/Northstar Studio and User B/Harbor Analytics with separate workspace instructions. `OPENAI_API_KEY` is needed only for an owner-run live-provider smoke test. Never use production credentials in local or automated testing.
 
+Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
+
 ## Quality checks
 
 Run all gates from the repository root:
@@ -33,7 +35,7 @@ npm run test:e2e
 npm run build
 ```
 
-Unit and route tests use controlled streams and fake adapters, so they require no AI key or database. The Playwright journey needs a disposable PostgreSQL database with the schema and demo seed applied, plus a Chromium browser installed (`npx playwright install chromium`). It logs in as User A, opens Northstar Studio, sends a message, and observes the streamed fake response. Configure the Playwright environment with `DATABASE_URL`, `BETTER_AUTH_SECRET`, both demo emails, and both demo passwords before starting `npm run test:e2e`. Use a dedicated test database; never point it at a development or production database you care about.
+Unit and route tests use controlled streams and fake adapters, so they require no AI key or database. The authorization integration test additionally runs when `TEST_DATABASE_URL` is set, and requires that it point to a migrated and seeded database named exactly `workspace_ai_test`; it only reads seeded rows. The Playwright journey needs a disposable PostgreSQL database with the schema and demo seed applied, plus a Chromium browser installed (`npx playwright install chromium`). It logs in as User A, opens Northstar Studio, sends a message, and observes the streamed fake response. Configure the Playwright environment with `DATABASE_URL`, `BETTER_AUTH_SECRET`, both demo emails, and both demo passwords before starting `npm run test:e2e`. Use a dedicated test database; never point it at a development or production database you care about.
 
 CI runs these checks on pull requests and pushes to `main`. Its PostgreSQL 16 service uses a fresh `workspace_ai_test` database. Demo passwords and the Better Auth secret in CI are synthetic job-local values. `CHAT_FAKE_PROVIDER=true` selects the deterministic, delayed fake stream only outside production, and CI supplies no AI key or production credentials.
 
@@ -57,7 +59,7 @@ flowchart LR
 4. In a separate private browser session, sign in as User B and verify only Harbor Analytics appears.
 5. Try opening `/w/workspace-a` in User B's session and confirm access is denied.
 
-The automated login-and-stream journey saves [a screenshot](output/playwright/critical-journey.png) when it runs. CI also uploads Playwright results as a workflow artifact.
+The committed [chat screenshot](output/playwright/critical-journey.png) shows the actual chat component with a deterministic streamed test response. The automated login-and-stream journey saves its own screenshot at the same path when run against a migrated, seeded test database. CI also uploads Playwright results as a workflow artifact.
 
 ## Implemented features and limitations
 
