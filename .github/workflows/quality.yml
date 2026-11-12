@@ -1,0 +1,59 @@
+name: Quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: workspace_ai_test
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d workspace_ai_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/workspace_ai_test
+      TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/workspace_ai_test
+      BETTER_AUTH_SECRET: ci-only-secret-that-is-not-used-outside-this-job
+      BETTER_AUTH_URL: http://localhost:3000
+      DEMO_USER_A_EMAIL: user-a@example.test
+      DEMO_USER_A_PASSWORD: ci-only-user-a-password
+      DEMO_USER_B_EMAIL: user-b@example.test
+      DEMO_USER_B_PASSWORD: ci-only-user-b-password
+      CHAT_FAKE_PROVIDER: 'true'
+      OPENAI_API_KEY: ''
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Apply schema to isolated test database
+        run: npx drizzle-kit migrate
+      - run: npm run db:seed
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-results
+          path: |
+            output/playwright/
+            test-results/
+          if-no-files-found: ignore
+      - run: npm run build
