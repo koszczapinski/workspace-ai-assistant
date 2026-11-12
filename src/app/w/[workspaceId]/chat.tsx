@@ -1,2 +1,62 @@
-'use client';import Link from 'next/link';import {useChat} from '@ai-sdk/react';import {DefaultChatTransport} from 'ai';import {useState} from 'react';
-export default function Chat({id,name}:{id:string,name:string}){const [input,setInput]=useState('');const {messages,sendMessage,status,stop,error}=useChat({transport:new DefaultChatTransport({api:'/api/chat',body:{workspaceId:id}})});return <main className="mx-auto flex h-screen max-w-3xl flex-col p-6"><header className="border-b pb-4"><Link href="/">← Workspaces</Link><h1 className="mt-2 text-2xl font-semibold">{name}</h1></header><section className="flex-1 space-y-4 overflow-y-auto py-6" aria-live="polite">{messages.map(m=><article key={m.id} className={`whitespace-pre-wrap break-words rounded p-4 ${m.role==='user'?'ml-12 bg-blue-50':'mr-12 bg-slate-100'}`}><b>{m.role==='user'?'You':'Assistant'}</b><p>{m.parts.map((p,i)=>p.type==='text'?<span key={i}>{p.text}</span>:null)}</p></article>)}{status==='submitted'&&<p role="status">Assistant is thinking…</p>}{error&&<p role="alert">Assistant request failed. Please try again.</p>}</section><form className="flex gap-2" onSubmit={e=>{e.preventDefault();if(input.trim())sendMessage({text:input.trim()});setInput('')}}><label className="sr-only" htmlFor="message">Message</label><input id="message" value={input} onChange={e=>setInput(e.target.value)} className="min-w-0 flex-1 rounded border p-3 focus:outline-2" placeholder="Write a message…"/><button disabled={status==='streaming'||status==='submitted'} className="rounded bg-slate-900 px-4 text-white disabled:opacity-50">Send</button>{status==='streaming'&&<button type="button" onClick={stop} className="rounded border px-3">Stop</button>}</form></main>}
+'use client';
+
+import Link from 'next/link';
+import { useChat } from '@ai-sdk/react';
+import { DefaultChatTransport, type ChatTransport, type UIMessage } from 'ai';
+import { useState } from 'react';
+
+type ChatProps = { id: string; name: string; transport?: ChatTransport<UIMessage> };
+
+export default function Chat({ id, name, transport }: ChatProps) {
+  const [input, setInput] = useState('');
+  const { messages, sendMessage, status, stop, error } = useChat({
+    transport: transport ?? new DefaultChatTransport({ api: '/api/chat', body: { workspaceId: id } }),
+  });
+
+  return (
+    <main className="mx-auto flex h-dvh max-w-3xl flex-col p-4 sm:p-6">
+      <header className="shrink-0 border-b pb-4">
+        <Link className="rounded focus-visible:outline-2 focus-visible:outline-offset-2" href="/">← Workspaces</Link>
+        <h1 className="mt-2 text-2xl font-semibold">{name}</h1>
+      </header>
+      <section className="min-h-0 flex-1 space-y-4 overflow-y-auto py-6" aria-label="Conversation">
+        {messages.map(message => (
+          <article
+            key={message.id}
+            className={`max-w-full overflow-hidden whitespace-pre-wrap break-words rounded p-4 ${message.role === 'user' ? 'ml-4 bg-blue-50 sm:ml-12' : 'mr-4 bg-slate-100 sm:mr-12'}`}
+          >
+            <b>{message.role === 'user' ? 'You' : 'Assistant'}</b>
+            <p>{message.parts.map((part, index) => part.type === 'text' ? <span key={index}>{part.text}</span> : null)}</p>
+          </article>
+        ))}
+        {status === 'submitted' && <p role="status">Assistant is thinking…</p>}
+        {error && <p role="alert">Assistant request failed. Please try again.</p>}
+      </section>
+      <form
+        className="flex shrink-0 gap-2"
+        onSubmit={event => {
+          event.preventDefault();
+          if (input.trim() && input.length <= 4000) {
+            sendMessage({ text: input.trim() });
+            setInput('');
+          }
+        }}
+      >
+        <label className="sr-only" htmlFor="message">Message</label>
+        <input
+          id="message"
+          maxLength={4000}
+          value={input}
+          onChange={event => setInput(event.target.value)}
+          className="min-w-0 flex-1 rounded border p-3 focus-visible:outline-2 focus-visible:outline-offset-2"
+          placeholder="Write a message…"
+        />
+        <button
+          disabled={status === 'streaming' || status === 'submitted' || !input.trim()}
+          className="rounded bg-slate-900 px-4 text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50"
+        >Send</button>
+        {status === 'streaming' && <button type="button" onClick={stop} className="rounded border px-3 focus-visible:outline-2 focus-visible:outline-offset-2">Stop</button>}
+      </form>
+    </main>
+  );
+}

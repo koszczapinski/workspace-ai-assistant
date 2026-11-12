@@ -14,7 +14,7 @@ npm run db:seed
 npm run dev
 ```
 
-Seed users are configured by `DEMO_USER_A_EMAIL`, `DEMO_USER_A_PASSWORD`, `DEMO_USER_B_EMAIL`, and `DEMO_USER_B_PASSWORD`. The seed is repeatable. Chat limits: 30 messages, 4,000 serialized characters per message.
+Seed users are configured by `DEMO_USER_A_EMAIL`, `DEMO_USER_A_PASSWORD`, `DEMO_USER_B_EMAIL`, and `DEMO_USER_B_PASSWORD`. The seed is repeatable. Chat requests are limited to 64,000 bytes, 30 conversation messages, and 4,000 text characters per message (with up to 20 text parts per message).
 
 ## Quality checks
 
@@ -38,7 +38,7 @@ flowchart LR
   AIProvider --> StreamedResponse[Streamed response to browser]
 ```
 
-Automated authorization tests should use an isolated test database and fake provider. Never point tests at a development or production database.
+Automated chat route tests inject session, membership, and provider adapters; UI streaming tests use a delayed fake stream. They require no AI key or database. Any database-backed authorization tests must use an isolated test database, never a development or production database.
 
 ## Two-minute demo
 
