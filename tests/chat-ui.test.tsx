@@ -38,6 +38,19 @@ it('renders a deliberately delayed assistant stream incrementally', async () => 
   expect(screen.getByText('Assistant')).toBeTruthy();
 });
 
+it('gives the user a clear starting point before the first message', () => {
+  const transport = new DefaultChatTransport({
+    api: '/api/chat',
+    body: { workspaceId: 'workspace-a' },
+    fetch: async () => new Response(null, { status: 500 }),
+  });
+
+  render(<Chat id="workspace-a" name="Workspace A" transport={transport} />);
+
+  expect(screen.getByText('Start a conversation')).toBeVisible();
+  expect(screen.getByText('Ask a question about Workspace A to get started.')).toBeVisible();
+});
+
 it('keeps the live status stable while streamed tokens update', async () => {
   let finishStream = () => {};
   const streamCompletion = new Promise<void>(resolve => { finishStream = resolve; });
