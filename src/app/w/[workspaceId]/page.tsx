@@ -1,2 +1,3 @@
+export const dynamic = "force-dynamic";
 import {headers} from 'next/headers';import {redirect,notFound} from 'next/navigation';import {auth} from '@/lib/auth';import {authorizedWorkspace} from '@/lib/workspaces';import Chat from './chat';
 export default async function Workspace({params}:{params:Promise<{workspaceId:string}>}){const {workspaceId}=await params;if(!auth)redirect('/login');const s=await auth.api.getSession({headers:await headers()});if(!s)redirect('/login');const w=await authorizedWorkspace(s.user.id,workspaceId);if(!w)notFound();return <Chat id={w.id} name={w.name}/>}
