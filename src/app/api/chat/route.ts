@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai';
 import { z } from 'zod';
 import { auth } from '@/lib/auth';
-import { authorizeWorkspace } from '@/lib/authorization';
+import { authorizeWorkspaceForUser, type WorkspaceAccess } from '@/lib/authorization';
 import { streamAssistant } from '@/lib/provider';
 
 const messagePartsSchema = z.array(z.object({ type: z.literal('text'), text: z.string().max(4000) })).max(20)
@@ -18,8 +18,8 @@ const requestSchema = z.object({
 const MAX_BODY_BYTES = 64_000;
 
 type ChatDependencies = {
-  getSession: (request: Request) => Promise<unknown>;
-  authorize: (workspaceId: string) => ReturnType<typeof authorizeWorkspace>;
+  getSession: (request: Request) => Promise<{ user: { id: string } } | null>;
+  authorize: (userId: string, workspaceId: string) => Promise<WorkspaceAccess>;
   stream: (input: { instructions: string; messages: UIMessage[] }) => Promise<Response> | Response;
 };
 
@@ -52,7 +52,8 @@ async function readBoundedBody(request: Request): Promise<string | null> {
 
 export function createChatPost(dependencies: ChatDependencies) {
   return async function POST(request: Request): Promise<Response> {
-    if (!(await dependencies.getSession(request))) return Response.json({ error: 'Unauthorized' }, { status: 401 });
+    const session = await dependencies.getSession(request);
+    if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     let body: string | null;
     try {
@@ -74,7 +75,7 @@ export function createChatPost(dependencies: ChatDependencies) {
       return Response.json({ error: 'Invalid or empty message' }, { status: 400 });
     }
 
-    const access = await dependencies.authorize(parsed.data.workspaceId);
+    const access = await dependencies.authorize(session.user.id, parsed.data.workspaceId);
     if (access.kind === 'unavailable') return Response.json({ error: 'Authentication unavailable' }, { status: 503 });
     if (access.kind === 'unauthenticated') return Response.json({ error: 'Unauthorized' }, { status: 401 });
     if (access.kind === 'forbidden') return Response.json({ error: 'Forbidden' }, { status: 403 });
@@ -92,6 +93,6 @@ export function createChatPost(dependencies: ChatDependencies) {
 
 export const POST = createChatPost({
   getSession: async request => auth?.api.getSession({ headers: request.headers }) ?? null,
-  authorize: authorizeWorkspace,
+  authorize: authorizeWorkspaceForUser,
   stream: streamAssistant,
 });

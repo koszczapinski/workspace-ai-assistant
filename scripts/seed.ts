@@ -1,6 +1,77 @@
 import { loadEnvConfig } from '@next/env';
-import postgres from 'postgres';import {hashPassword} from 'better-auth/crypto';
+import { createHash } from 'node:crypto';
+import { hashPassword } from 'better-auth/crypto';
+import postgres from 'postgres';
+
 loadEnvConfig(process.cwd());
-const sql=postgres(process.env.DATABASE_URL!);const emailA=process.env.DEMO_USER_A_EMAIL;const passA=process.env.DEMO_USER_A_PASSWORD;const emailB=process.env.DEMO_USER_B_EMAIL;const passB=process.env.DEMO_USER_B_PASSWORD;if(!emailA||!passA||!emailB||!passB)throw new Error('Set both demo email and password environment variables');
-for(const [id,email,password,name,wid,wname,instructions] of [['user-a',emailA,passA,'Demo User A','workspace-a','Northstar Studio','You are the Northstar Studio assistant. Help with synthetic product planning.'],['user-b',emailB,passB,'Demo User B','workspace-b','Harbor Analytics','You are the Harbor Analytics assistant. Help with synthetic data analysis.']] as const){const hashed=await hashPassword(password);await sql`INSERT INTO "user" (id,name,email,email_verified) VALUES (${id},${name},${email},true) ON CONFLICT (email) DO NOTHING`;const [{id:uid}]=await sql`SELECT id FROM "user" WHERE email=${email}`;await sql`INSERT INTO workspaces(id,name,assistant_instructions) VALUES(${wid},${wname},${instructions}) ON CONFLICT(id) DO UPDATE SET name=excluded.name,assistant_instructions=excluded.assistant_instructions`;await sql`INSERT INTO memberships(id,user_id,workspace_id) VALUES(${id+'-membership'},${uid},${wid}) ON CONFLICT(user_id,workspace_id) DO NOTHING`;await sql`INSERT INTO account(id,user_id,account_id,provider_id,password) VALUES(${id+'-account'},${uid},${email},'credential',${hashed}) ON CONFLICT(id) DO UPDATE SET password=excluded.password`;}
-await sql.end();
+
+const databaseUrl = process.env.DATABASE_URL;
+const emailA = process.env.DEMO_USER_A_EMAIL;
+const passwordA = process.env.DEMO_USER_A_PASSWORD;
+const emailB = process.env.DEMO_USER_B_EMAIL;
+const passwordB = process.env.DEMO_USER_B_PASSWORD;
+
+if (!databaseUrl) throw new Error('Set DATABASE_URL before seeding');
+if (!emailA || !passwordA || !emailB || !passwordB) {
+  throw new Error('Set both demo email and password environment variables');
+}
+if (emailA === emailB) throw new Error('Demo users must have distinct email addresses');
+
+const sql = postgres(databaseUrl);
+const demoUsers = [
+  {
+    key: 'a', email: emailA, password: passwordA, name: 'Demo User A',
+    workspaceId: 'workspace-a', workspaceName: 'Northstar Studio',
+    instructions: 'You are the Northstar Studio assistant. Help with synthetic product planning.',
+  },
+  {
+    key: 'b', email: emailB, password: passwordB, name: 'Demo User B',
+    workspaceId: 'workspace-b', workspaceName: 'Harbor Analytics',
+    instructions: 'You are the Harbor Analytics assistant. Help with synthetic data analysis.',
+  },
+] as const;
+
+try {
+  await sql.begin(async transaction => {
+    // Only memberships for these two deterministic demo workspaces are reconciled.
+    await transaction`DELETE FROM memberships WHERE workspace_id IN ('workspace-a', 'workspace-b')`;
+
+    for (const demo of demoUsers) {
+      const userId = `demo-${demo.key}-${createHash('sha256').update(demo.email).digest('hex').slice(0, 16)}`;
+      const hashedPassword = await hashPassword(demo.password);
+      await transaction`
+        INSERT INTO "user" (id, name, email, email_verified)
+        VALUES (${userId}, ${demo.name}, ${demo.email}, true)
+        ON CONFLICT (email) DO NOTHING
+      `;
+      const [user] = await transaction<{ id: string }[]>`
+        SELECT id FROM "user" WHERE email = ${demo.email}
+      `;
+      if (!user) throw new Error(`Unable to find seeded user ${demo.email}`);
+
+      await transaction`
+        INSERT INTO workspaces (id, name, assistant_instructions)
+        VALUES (${demo.workspaceId}, ${demo.workspaceName}, ${demo.instructions})
+        ON CONFLICT (id) DO UPDATE
+        SET name = excluded.name, assistant_instructions = excluded.assistant_instructions
+      `;
+      await transaction`
+        INSERT INTO memberships (id, user_id, workspace_id)
+        VALUES (${`${userId}-membership`}, ${user.id}, ${demo.workspaceId})
+      `;
+      const [existingCredential] = await transaction<{ id: string }[]>`
+        UPDATE account SET password = ${hashedPassword}
+        WHERE user_id = ${user.id} AND account_id = ${demo.email} AND provider_id = 'credential'
+        RETURNING id
+      `;
+      if (!existingCredential) {
+        await transaction`
+          INSERT INTO account (id, user_id, account_id, provider_id, password)
+          VALUES (${`${userId}-account`}, ${user.id}, ${demo.email}, 'credential', ${hashedPassword})
+        `;
+      }
+    }
+  });
+} finally {
+  await sql.end();
+}
