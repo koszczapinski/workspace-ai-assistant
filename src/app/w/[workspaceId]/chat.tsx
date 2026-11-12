@@ -3,15 +3,28 @@
 import Link from 'next/link';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ChatTransport, type UIMessage } from 'ai';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 type ChatProps = { id: string; name: string; transport?: ChatTransport<UIMessage> };
 
-export default function Chat({ id, name, transport }: ChatProps) {
+export default function Chat(props: ChatProps) {
+  return <ChatSession key={props.id} {...props} />;
+}
+
+function ChatSession({ id, name, transport }: ChatProps) {
   const [input, setInput] = useState('');
-  const { messages, sendMessage, status, stop, error } = useChat({
+  const [stoppedMessageId, setStoppedMessageId] = useState<string | null>(null);
+  const [stopped, setStopped] = useState(false);
+  const sendInProgress = useRef(false);
+  const { messages, sendMessage, status, stop, error, regenerate, clearError } = useChat({
+    id,
     transport: transport ?? new DefaultChatTransport({ api: '/api/chat', body: { workspaceId: id } }),
   });
+  const active = status === 'submitted' || status === 'streaming';
+
+  useEffect(() => {
+    if (!active) sendInProgress.current = false;
+  }, [active]);
 
   return (
     <main className="mx-auto flex h-dvh max-w-3xl flex-col p-4 sm:p-6">
@@ -27,18 +40,24 @@ export default function Chat({ id, name, transport }: ChatProps) {
           >
             <b>{message.role === 'user' ? 'You' : 'Assistant'}</b>
             <p>{message.parts.map((part, index) => part.type === 'text' ? <span key={index}>{part.text}</span> : null)}</p>
+            {message.id === stoppedMessageId && <p className="mt-2 text-sm text-slate-600">Response stopped.</p>}
           </article>
         ))}
+        {stopped && !stoppedMessageId && <p role="status">Response stopped.</p>}
         {status === 'submitted' && <p role="status">Assistant is thinking…</p>}
-        {error && <p role="alert">Assistant request failed. Please try again.</p>}
+        {status === 'streaming' && <p role="status">Assistant is responding…</p>}
+        {error && <p role="alert">Assistant request failed: {error.message || 'Please try again.'}</p>}
       </section>
       <form
         className="flex shrink-0 gap-2"
         onSubmit={event => {
           event.preventDefault();
-          if (input.trim() && input.length <= 4000) {
+          if (!active && !sendInProgress.current && input.trim() && input.length <= 4000) {
+            sendInProgress.current = true;
             sendMessage({ text: input.trim() });
             setInput('');
+            setStoppedMessageId(null);
+            setStopped(false);
           }
         }}
       >
@@ -52,10 +71,20 @@ export default function Chat({ id, name, transport }: ChatProps) {
           placeholder="Write a message…"
         />
         <button
-          disabled={status === 'streaming' || status === 'submitted' || !input.trim()}
+          disabled={active || !input.trim()}
           className="rounded bg-slate-900 px-4 text-white focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-50"
         >Send</button>
-        {status === 'streaming' && <button type="button" onClick={stop} className="rounded border px-3 focus-visible:outline-2 focus-visible:outline-offset-2">Stop</button>}
+        {active && <button type="button" aria-label="Stop response" onClick={() => {
+          const assistant = [...messages].reverse().find(message => message.role === 'assistant');
+          if (assistant) setStoppedMessageId(assistant.id);
+          setStopped(true);
+          sendInProgress.current = false;
+          stop();
+        }} className="rounded border px-3 focus-visible:outline-2 focus-visible:outline-offset-2">Stop</button>}
+        {error && <button type="button" aria-label="Retry response" onClick={() => {
+          clearError();
+          regenerate();
+        }} className="rounded border px-3 focus-visible:outline-2 focus-visible:outline-offset-2">Retry</button>}
       </form>
     </main>
   );
