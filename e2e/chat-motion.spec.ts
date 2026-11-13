@@ -17,6 +17,8 @@ test('Trace shimmer and message entry respect reduced motion', async ({ page }) 
   const thinkingTitle = page.locator('[data-slot="trace-title"]', { hasText: 'Thinking…' });
   await expect(thinkingTitle).toBeVisible();
   await expect.poll(() => thinkingTitle.evaluate(element => getComputedStyle(element).animationName)).toBe('none');
+  const activityLine = thinkingTitle.locator('..');
+  await expect.poll(() => activityLine.evaluate(element => getComputedStyle(element).transitionDuration)).toBe('0s');
   const userMessage = page.locator('article[aria-label="Your message"]');
   await expect.poll(() => userMessage.evaluate(element => getComputedStyle(element).animationName)).toBe('none');
 });
