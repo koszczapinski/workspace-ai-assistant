@@ -25,3 +25,30 @@ The login, workspace list, and chat screens use the neutral shadcn tokens and sy
 Remaining visual differences from lunarity.ai, reviewed against its live home page in light and dark modes: the reference is a broad portfolio landing page with a large centered hero, full site navigation, and long scrolling sections; this app uses a compact workspace header and task-focused screens. Its wordmark is a moon plus letter-spaced LUNΛRITY, while this app uses a boxed Λ mark and Workspace AI label. The reference hero is more expansive and typography-led; the app keeps its login headline and workspace content sized for form use and reading. The app uses the same restrained neutral palette, light/dark contrast, system sans, and a subtle warm dark-mode glow. These differences reflect the authenticated chat product rather than the portfolio site's page structure.
 
 Krzysztof approved the mobile and desktop screenshot set in light and dark modes before ticket 06 was merged into `integration/ui-06-07`.
+
+## Ticket 07 — AI-native chat presentation with Trace
+
+The shadcn Trace component was added to present chat activity throughout the lifecycle:
+- Waiting state: before the first response token, a `TraceLine` with `status="running"` displays the shimmer title "Thinking…".
+- Streaming and completion: activity remains visible during text generation; upon completion, the line drops its running status and renders an elapsed duration title (e.g. "Thought 0s" or "Thought 3s").
+- Stop and provider errors: surfaced as dedicated Trace lines indicating state ("Generation stopped", "Generation failed"). Stop preserves partial output and restores interactive inputs; provider errors preserve the user message without duplication and provide a functional Retry action.
+- Reasoning parts: displayed in plain text within a collapsible Trace row that is expanded while running and toggleable when finished. Hidden when no reasoning parts are present. Model output and reasoning are never rendered as raw HTML.
+- Accessibility & Motion: state transitions are announced to assistive technology without token-level noise. All animations (shimmer, message entry translation/opacity, collapsible height/chevron transitions) are disabled under `prefers-reduced-motion: reduce`.
+- Fake provider delay: configurable via `CHAT_FAKE_PROVIDER_DELAY_MS` (default 120ms) for deterministic waiting and streaming verification without third-party API calls.
+- Automated tests: unit coverage in `tests/chat-trace.test.tsx` and `tests/provider.test.ts`, and end-to-end motion verification in `e2e/chat-motion.spec.ts`.
+
+## Code review and final verification
+
+The `code-review` findings on `integration/ui-06-07` were addressed in commit `ead3f06`:
+1. Globally disabled CSS transitions and animations under `prefers-reduced-motion: reduce` so Trace collapsible height and chevrons immediately respect reduced motion preferences.
+2. Extracted and reused the fake provider delay helper in `src/lib/provider.ts`.
+3. Added a mock for `window.localStorage` in `tests/theme-toggle.test.tsx` (`d8a6dab`) to avoid unhandled storage calls in Node environments.
+4. Cleaned up all temporary subagent worktrees (`/private/tmp/workspace-ai-06`, `/private/tmp/workspace-ai-07`, `/private/tmp/workspace-ai-07-review`).
+
+Full validation suite passed cleanly on `integration/ui-06-07`:
+- `npm run typecheck` passed (0 errors).
+- `npm run lint` passed (0 warnings or errors).
+- `CHAT_FAKE_PROVIDER=true npm test` passed (11 test files, 26 tests, including PostgreSQL authorization integration tests).
+- `npm run test:e2e` passed (3 test suites: critical journey, reduced-motion checks, and full multi-viewport light/dark screenshot matrix).
+- `npm run build` completed successfully.
+
