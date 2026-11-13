@@ -196,8 +196,12 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .chat-message-enter {
-    animation: none;
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    scroll-behavior: auto !important;
+    transition: none !important;
   }
 }
 
