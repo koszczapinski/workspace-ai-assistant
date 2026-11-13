@@ -77,9 +77,9 @@ it('keeps the live status stable while streamed tokens update', async () => {
 
   await screen.findByText('First');
   const status = screen.getByRole('status');
-  expect(status).toHaveTextContent('Assistant is responding…');
+  expect(status).toHaveTextContent('Responding…');
   await screen.findByText('First second');
   expect(screen.getByRole('status')).toBe(status);
-  expect(status).toHaveTextContent('Assistant is responding…');
+  expect(status).toHaveTextContent('Responding…');
   finishStream();
 });
