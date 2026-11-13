@@ -6,8 +6,19 @@ import ThemeToggle from '@/components/theme-toggle';
 
 afterEach(cleanup);
 
+const storage = new Map<string, string>();
+const localStorageMock = {
+  get length() { return storage.size; },
+  clear() { storage.clear(); },
+  getItem(key: string) { return storage.get(key) ?? null; },
+  key(index: number) { return [...storage.keys()][index] ?? null; },
+  removeItem(key: string) { storage.delete(key); },
+  setItem(key: string, value: string) { storage.set(key, String(value)); },
+};
+
 beforeEach(() => {
-  localStorage.clear();
+  Object.defineProperty(window, 'localStorage', { configurable: true, value: localStorageMock });
+  window.localStorage.clear();
   document.documentElement.classList.remove('dark');
 });
 
@@ -21,11 +32,11 @@ describe('theme selection', () => {
 
     await waitFor(() => expect(document.documentElement).not.toHaveClass('dark'));
     expect(toggle).toHaveAccessibleName('Switch to dark theme');
-    expect(localStorage.getItem('workspace-theme')).toBe('light');
+    expect(window.localStorage.getItem('workspace-theme')).toBe('light');
   });
 
   it('restores the selected appearance on a later visit', async () => {
-    localStorage.setItem('workspace-theme', 'light');
+    window.localStorage.setItem('workspace-theme', 'light');
     document.documentElement.classList.add('dark');
     render(<ThemeToggle />);
 
