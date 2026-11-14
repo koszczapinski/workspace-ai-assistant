@@ -7,6 +7,7 @@ import { DefaultChatTransport, type ChatTransport, type UIMessage } from 'ai';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { BrandLogo } from '@/components/brand-logo';
 import {
   Trace,
   TraceCollapsible,
@@ -77,7 +78,9 @@ function ChatSession({ id, name, transport }: ChatProps) {
       <section className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-y-auto py-5 sm:py-8" aria-label="Conversation">
         {messages.length === 0 && (
           <div className="my-auto flex flex-col items-center justify-center py-10 text-center">
-            <div aria-hidden="true" className="mb-5 flex size-12 items-center justify-center rounded-2xl border bg-card text-lg font-semibold shadow-sm">Λ</div>
+            <div aria-hidden="true" className="mb-5 flex size-12 items-center justify-center rounded-2xl border border-border/80 bg-card/80 text-foreground shadow-sm backdrop-blur-md">
+              <BrandLogo className="size-6" />
+            </div>
             <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Start a conversation</h2>
             <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Ask a question about {name} to get started.</p>
           </div>

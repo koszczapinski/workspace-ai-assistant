@@ -36,7 +36,7 @@ export default function Login() {
       </section>
 
       <section className="relative mx-auto w-full max-w-md lg:mx-0 lg:justify-self-end" aria-labelledby="sign-in-title">
-        <div className="rounded-2xl border bg-card p-6 shadow-2xl shadow-foreground/5 sm:p-8 dark:shadow-black/30">
+        <div className="rounded-2xl border border-border/80 bg-card/85 p-6 shadow-2xl shadow-foreground/5 backdrop-blur-xl sm:p-8 dark:shadow-black/30">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Welcome back</p>
           <h2 id="sign-in-title" className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Sign in to continue</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Use your workspace account to pick up where you left off.</p>
