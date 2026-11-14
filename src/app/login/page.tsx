@@ -15,7 +15,6 @@ export default function Login() {
 
   return (
     <main className="relative mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl items-center gap-10 overflow-hidden px-4 py-10 sm:px-8 lg:grid-cols-[1fr_0.9fr] lg:gap-20 lg:py-16">
-      <div aria-hidden="true" className="ambient-glow pointer-events-none absolute -right-24 top-12 size-80 rounded-full opacity-80" />
       <section className="relative max-w-xl">
         <p className="mb-6 inline-flex items-center gap-2 rounded-full border bg-card/70 px-3 py-1.5 text-xs font-medium tracking-wide text-muted-foreground shadow-sm">
           <span className="size-1.5 rounded-full bg-foreground" aria-hidden="true" />

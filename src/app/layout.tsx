@@ -19,7 +19,6 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
             style={{ backgroundImage: "url('/terra-background.jpg')" }}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-background/90" />
-          <div className="ambient-glow absolute -right-24 top-12 size-96 rounded-full opacity-50" />
         </div>
 
         <div className="relative z-10 flex min-h-dvh flex-col">

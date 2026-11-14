@@ -63,7 +63,6 @@ function ChatSession({ id, name, transport }: ChatProps) {
 
   return (
     <main className="relative mx-auto flex h-[calc(100dvh-4rem)] min-h-[30rem] max-w-6xl flex-col overflow-hidden px-3 sm:px-8">
-      <div aria-hidden="true" className="ambient-glow pointer-events-none absolute left-1/2 top-16 size-64 -translate-x-1/2 rounded-full opacity-30" />
       <header className="relative mx-auto flex w-full max-w-3xl shrink-0 items-center justify-between gap-4 border-b py-4 sm:py-5">
         <Link href="/" className="-ml-2 inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
             <ArrowLeft aria-hidden="true" className="size-4" />

@@ -14,7 +14,6 @@ export default async function Home() {
 
   return (
     <main className="relative mx-auto min-h-[calc(100dvh-4rem)] max-w-6xl overflow-hidden px-4 py-10 sm:px-8 sm:py-14">
-      <div aria-hidden="true" className="ambient-glow pointer-events-none absolute -right-32 -top-28 size-96 rounded-full opacity-60" />
       <section className="relative mx-auto max-w-3xl">
         <p className="text-xs font-semibold uppercase tracking-[0.25em] text-muted-foreground">Your private space</p>
         <h1 className="gradient-heading mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Your workspaces</h1>
