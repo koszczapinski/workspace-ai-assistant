@@ -4,7 +4,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "LUNARITY | Workspace AI",
+  title: "NORTH | STAR · Workspace AI",
   description: "Private, workspace-scoped AI assistant demo",
 };
 
@@ -24,7 +24,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         <div className="relative z-10 flex min-h-dvh flex-col">
           <header className="app-header">
             <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-4 px-4 sm:px-8">
-              <div className="flex min-w-0 items-center gap-3" aria-label="LUNARITY Workspace AI">
+              <div className="flex min-w-0 items-center gap-3" aria-label="NORTH | STAR Workspace AI">
                 <span
                   aria-hidden="true"
                   className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-border/80 bg-card/80 text-foreground shadow-sm backdrop-blur-md"
@@ -32,7 +32,11 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   <BrandLogo className="size-5" />
                 </span>
                 <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold tracking-[0.2em]">LUNARITY</span>
+                  <span className="flex items-center text-sm font-semibold tracking-[0.2em]">
+                    <span>NORTH</span>
+                    <span className="mx-1 font-light text-sky-400/70">|</span>
+                    <span>STAR</span>
+                  </span>
                   <span className="mt-0.5 block text-[0.62rem] font-medium uppercase tracking-[0.2em] text-muted-foreground">Workspace AI</span>
                 </span>
               </div>
