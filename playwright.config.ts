@@ -25,6 +25,7 @@ export default defineConfig({
       BETTER_AUTH_URL: baseURL,
       OPENAI_API_KEY: '',
       CHAT_FAKE_PROVIDER: 'true',
+      CHAT_FAKE_PROVIDER_DELAY_MS: process.env.CHAT_FAKE_PROVIDER_DELAY_MS ?? '120',
       DEMO_USER_A_EMAIL: process.env.DEMO_USER_A_EMAIL ?? 'user-a@example.test',
       DEMO_USER_A_PASSWORD: process.env.DEMO_USER_A_PASSWORD ?? 'test-user-a-password',
       DEMO_USER_B_EMAIL: process.env.DEMO_USER_B_EMAIL ?? 'user-b@example.test',

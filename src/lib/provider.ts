@@ -10,6 +10,11 @@ export function createConfiguredOpenAIModel() {
 /** Provider adapter: owns model configuration and translates browser messages for the AI SDK. */
 export async function streamAssistant(input: { instructions: string; messages: UIMessage[] }): Promise<Response> {
   if (process.env.NODE_ENV !== 'production' && process.env.CHAT_FAKE_PROVIDER === 'true') {
+    const configuredDelay = Number(process.env.CHAT_FAKE_PROVIDER_DELAY_MS ?? '120');
+    const delayMs = Number.isFinite(configuredDelay) && configuredDelay >= 0
+      ? Math.min(configuredDelay, 5_000)
+      : 120;
+    const waitForDelay = () => new Promise<void>(resolve => setTimeout(resolve, delayMs));
     const prompt = input.messages.at(-1)?.parts
       .filter(part => part.type === 'text')
       .map(part => part.text)
@@ -17,11 +22,11 @@ export async function streamAssistant(input: { instructions: string; messages: U
     return createUIMessageStreamResponse({
       stream: createUIMessageStream({
         execute: async ({ writer }) => {
-          await new Promise(resolve => setTimeout(resolve, 120));
+          await waitForDelay();
           const id = 'fake-demo-response';
           writer.write({ type: 'text-start', id });
           writer.write({ type: 'text-delta', id, delta: 'Demo response: ' });
-          await new Promise(resolve => setTimeout(resolve, 120));
+          await waitForDelay();
           writer.write({ type: 'text-delta', id, delta: prompt });
           writer.write({ type: 'text-end', id });
         },
