@@ -200,6 +200,23 @@
   animation: chat-message-enter 180ms ease-out both;
 }
 
+@keyframes star-pulse {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7);
+  }
+  50% {
+    transform: scale(1.15);
+    opacity: 0.85;
+    box-shadow: 0 0 8px 3px rgba(56, 189, 248, 0.5);
+  }
+}
+
+.pulse-star {
+  animation: star-pulse 2.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

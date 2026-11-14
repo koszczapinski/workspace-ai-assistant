@@ -16,8 +16,11 @@ export default function Login() {
   return (
     <main className="relative mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl items-center gap-10 overflow-hidden px-4 py-10 sm:px-8 lg:grid-cols-[1fr_0.9fr] lg:gap-20 lg:py-16">
       <section className="relative max-w-xl">
-        <p className="mb-6 inline-flex items-center gap-2 rounded-full border bg-card/70 px-3 py-1.5 text-xs font-medium tracking-wide text-muted-foreground shadow-sm">
-          <span className="size-1.5 rounded-full bg-foreground" aria-hidden="true" />
+        <p className="mb-6 inline-flex items-center gap-2.5 rounded-full border border-border/80 bg-card/60 px-3.5 py-1.5 text-xs font-medium tracking-wide text-muted-foreground shadow-sm backdrop-blur-md">
+          <span className="relative flex size-2 items-center justify-center" aria-hidden="true">
+            <span className="pulse-star absolute inline-flex size-full rounded-full bg-sky-400" />
+            <span className="relative inline-flex size-1.5 rounded-full bg-white" />
+          </span>
           Private workspace assistant
         </p>
         <p className="mb-4 text-xs font-semibold uppercase tracking-[0.28em] text-muted-foreground">A calmer way to think</p>
