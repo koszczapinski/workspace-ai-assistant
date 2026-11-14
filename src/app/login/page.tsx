@@ -15,7 +15,6 @@ export default function Login() {
 
   return (
     <main className="relative mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl items-center gap-10 overflow-hidden px-4 py-10 sm:px-8 lg:grid-cols-[1fr_0.9fr] lg:gap-20 lg:py-16">
-      <div aria-hidden="true" className="ambient-glow pointer-events-none absolute -right-24 top-12 size-80 rounded-full opacity-80" />
       <section className="relative max-w-xl">
         <p className="mb-6 inline-flex items-center gap-2 rounded-full border bg-card/70 px-3 py-1.5 text-xs font-medium tracking-wide text-muted-foreground shadow-sm">
           <span className="size-1.5 rounded-full bg-foreground" aria-hidden="true" />
@@ -36,7 +35,7 @@ export default function Login() {
       </section>
 
       <section className="relative mx-auto w-full max-w-md lg:mx-0 lg:justify-self-end" aria-labelledby="sign-in-title">
-        <div className="rounded-2xl border bg-card p-6 shadow-2xl shadow-foreground/5 sm:p-8 dark:shadow-black/30">
+        <div className="rounded-2xl border border-border/80 bg-card/85 p-6 shadow-2xl shadow-foreground/5 backdrop-blur-xl sm:p-8 dark:shadow-black/30">
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">Welcome back</p>
           <h2 id="sign-in-title" className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Sign in to continue</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">Use your workspace account to pick up where you left off.</p>

@@ -51,6 +51,23 @@ flowchart LR
   AIProvider --> StreamedResponse[Streamed response to browser]
 ```
 
+## Interface preview
+
+### Login & Authentication
+| Dark Mode | Light Mode |
+|---|---|
+| ![Login - Dark](output/playwright/ui/login-desktop-dark.png) | ![Login - Light](output/playwright/ui/login-desktop-light.png) |
+
+### Workspaces
+| Dark Mode | Light Mode |
+|---|---|
+| ![Workspaces - Dark](output/playwright/ui/workspaces-desktop-dark.png) | ![Workspaces - Light](output/playwright/ui/workspaces-desktop-light.png) |
+
+### Workspace Chat & Streamed Trace
+| Streamed Chat (Dark) | Empty Conversation (Dark) |
+|---|---|
+| ![Chat Streamed - Dark](output/playwright/ui/chat-streamed-desktop-dark.png) | ![Chat Empty - Dark](output/playwright/ui/chat-empty-desktop-dark.png) |
+
 ## Two-minute demo
 
 1. Sign in as User A with the locally configured demo credentials.
