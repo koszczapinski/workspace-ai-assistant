@@ -13,7 +13,7 @@ vi.mock('../src/lib/auth', () => ({
 }));
 vi.mock('../src/lib/workspaces', () => ({ authorizedWorkspace: query, ownedWorkspace: owned }));
 
-import { authorizeWorkspace, authorizeWorkspaceOwner } from '../src/lib/authorization';
+import { authorizeWorkspace, authorizeWorkspaceForUser, authorizeWorkspaceOwner } from '../src/lib/authorization';
 
 describe('workspace authorization', () => {
   beforeEach(() => {
@@ -48,6 +48,19 @@ describe('workspace authorization', () => {
 
     await expect(authorizeWorkspace('workspace-b')).resolves.toEqual({ kind: 'forbidden' });
     expect(query).toHaveBeenCalledWith('user-a', 'workspace-b');
+  });
+});
+
+describe('chat authorization after a Membership is removed', () => {
+  beforeEach(() => query.mockReset());
+
+  it('is Forbidden on the very next check, because access is read from the stored Membership each time', async () => {
+    query.mockResolvedValueOnce({ id: 'workspace-a', name: 'A', assistantInstructions: 'A only', role: 'member' });
+    await expect(authorizeWorkspaceForUser('user-a', 'workspace-a')).resolves.toMatchObject({ kind: 'authorized' });
+
+    query.mockResolvedValueOnce(null); // the Membership was removed in between
+    await expect(authorizeWorkspaceForUser('user-a', 'workspace-a')).resolves.toEqual({ kind: 'forbidden' });
+    expect(query).toHaveBeenCalledTimes(2);
   });
 });
 

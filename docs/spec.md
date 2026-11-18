@@ -164,6 +164,8 @@ Include:
 
 ## Out of Scope
 
+This is the MVP spec. Later increments (see `.scratch/roadmap/roadmap.md`) have shipped some of the items below, such as invitations and an admin UI; the MVP list is kept as written.
+
 RAG, file uploads, vector databases, billing, tools/function calling, persistent conversations, public signup, invitations, admin UI, model selection, and production-grade abuse protection.
 
 Keep the demo private or local until cost limits and abuse controls are added. Never expose a publicly usable paid AI endpoint without those safeguards.

@@ -4,6 +4,13 @@ export type OwnerAccess =
   | { kind: 'forbidden' }
   | { kind: 'owner'; userId: string; workspace: { id: string; name: string } };
 
+/** The HTTP answer for an Owner check that did not pass: 503, 401 or 403. */
+export function ownerDenied(access: Exclude<OwnerAccess, { kind: 'owner' }>): Response {
+  if (access.kind === 'unavailable') return Response.json({ error: 'Authentication unavailable' }, { status: 503 });
+  if (access.kind === 'unauthenticated') return Response.json({ error: 'Unauthorized' }, { status: 401 });
+  return Response.json({ error: 'Forbidden' }, { status: 403 });
+}
+
 type OwnerAuthorizationDeps = {
   /** Resolves the server Session; null when anonymous. */
   getSession: () => Promise<{ user: { id: string } } | null>;

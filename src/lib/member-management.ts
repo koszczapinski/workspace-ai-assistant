@@ -1,8 +1,6 @@
 import { z } from 'zod';
-import type { OwnerAccess } from './owner-authorization';
-
-export type MemberRole = 'owner' | 'member';
-export type MemberChangeResult = 'ok' | 'not-found' | 'last-owner';
+import { MEMBER_ROLES, type MemberChangeResult, type MemberRole } from './member-types';
+import { ownerDenied, type OwnerAccess } from './owner-authorization';
 
 type MemberManagementDeps = {
   /** Owner-only authorization for one Workspace; derives identity and role from the Session and stored Membership. */
@@ -15,14 +13,8 @@ type MemberManagementDeps = {
 
 type Context = { params: Promise<{ workspaceId: string; userId: string }> };
 
-const roleSchema = z.object({ role: z.enum(['owner', 'member']) });
+const roleSchema = z.object({ role: z.enum(MEMBER_ROLES) });
 const LAST_OWNER = 'This is the last Owner, and a Workspace must keep at least one. Make another Member an Owner first.';
-
-function deny(access: Exclude<OwnerAccess, { kind: 'owner' }>): Response {
-  if (access.kind === 'unavailable') return Response.json({ error: 'Authentication unavailable' }, { status: 503 });
-  if (access.kind === 'unauthenticated') return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  return Response.json({ error: 'Forbidden' }, { status: 403 });
-}
 
 function answer(result: MemberChangeResult): Response {
   if (result === 'last-owner') return Response.json({ error: LAST_OWNER }, { status: 409 });
@@ -39,7 +31,7 @@ export function createMemberHandlers({ authorize, store }: MemberManagementDeps)
     async PATCH(request: Request, { params }: Context): Promise<Response> {
       const { workspaceId, userId } = await params;
       const access = await authorize(workspaceId);
-      if (access.kind !== 'owner') return deny(access);
+      if (access.kind !== 'owner') return ownerDenied(access);
 
       let raw: unknown;
       try { raw = await request.json(); } catch { return Response.json({ error: 'Malformed JSON' }, { status: 400 }); }
@@ -51,7 +43,7 @@ export function createMemberHandlers({ authorize, store }: MemberManagementDeps)
     async DELETE(_request: Request, { params }: Context): Promise<Response> {
       const { workspaceId, userId } = await params;
       const access = await authorize(workspaceId);
-      if (access.kind !== 'owner') return deny(access);
+      if (access.kind !== 'owner') return ownerDenied(access);
 
       return answer(await store.removeMember(access.workspace.id, userId));
     },

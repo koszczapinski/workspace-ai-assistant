@@ -3,10 +3,11 @@
 import { useId, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
+import type { MemberRole } from '@/lib/member-types';
 
 type Props = {
   workspaceId: string;
-  member: { userId: string; name: string; role: 'owner' | 'member' };
+  member: { userId: string; name: string; role: MemberRole };
   /** The row belongs to the signed-in Owner, so removal means leaving. */
   isSelf: boolean;
   /** This Member is the Workspace's only Owner; the server refuses to demote or remove them. */
@@ -42,7 +43,7 @@ export default function MemberActions({ workspaceId, member, isSelf, isLastOwner
     }
   }
 
-  const changeRole = (role: 'owner' | 'member') => run(
+  const changeRole = (role: MemberRole) => run(
     { method: 'PATCH', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ role }) },
     `${member.name} is now ${role === 'owner' ? 'an Owner' : 'a Member'}.`,
     () => router.refresh(),

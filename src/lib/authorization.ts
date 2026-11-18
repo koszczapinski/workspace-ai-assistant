@@ -1,5 +1,6 @@
 import { headers } from 'next/headers';
 import { auth } from './auth';
+import type { MemberRole } from './member-types';
 import { createOwnerAuthorization } from './owner-authorization';
 import { authorizedWorkspace, ownedWorkspace } from './workspaces';
 
@@ -8,7 +9,7 @@ export type WorkspaceAccess =
   | { kind: 'unauthenticated' }
   | { kind: 'forbidden' }
   // `role` is optional so callers that only need access (the chat endpoint) can ignore it.
-  | { kind: 'authorized'; workspace: Omit<NonNullable<Awaited<ReturnType<typeof authorizedWorkspace>>>, 'role'> & { role?: 'owner' | 'member' } };
+  | { kind: 'authorized'; workspace: Omit<NonNullable<Awaited<ReturnType<typeof authorizedWorkspace>>>, 'role'> & { role?: MemberRole } };
 
 export async function authorizeWorkspaceForUser(userId: string, workspaceId: string): Promise<WorkspaceAccess> {
   const workspace = await authorizedWorkspace(userId, workspaceId);

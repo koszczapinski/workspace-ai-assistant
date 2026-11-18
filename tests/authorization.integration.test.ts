@@ -224,9 +224,10 @@ it.skipIf(!testDatabaseUrl)('hides expired Invitations from the pending list and
     const live = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('live-one'), expiresAt: futureDays(3) });
 
     expect((await store.listPending('workspace-a', new Date())).map(i => i.id)).toEqual([live.id]);
-    await expect(store.consume(hashInvitationToken('expired-one'), new Date())).resolves.toBe(false);
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('expired-one'), extraAcceptEmails[0]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[0]!}`).resolves.toHaveLength(0);
   } finally {
-    await cleanInvitations();
+    await cleanAccept();
   }
 });
 
@@ -242,9 +243,33 @@ it.skipIf(!testDatabaseUrl)('revokes a pending Invitation only within its own Wo
     await expect(store.revoke('workspace-a', created.id, new Date())).resolves.toBe(true);
     await expect(store.revoke('workspace-a', created.id, new Date())).resolves.toBe(false);
     expect(await store.listPending('workspace-a', new Date())).toEqual([]);
-    await expect(store.consume(hashInvitationToken('to-revoke'), new Date())).resolves.toBe(false);
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('to-revoke'), extraAcceptEmails[0]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[0]!}`).resolves.toHaveLength(0);
   } finally {
-    await cleanInvitations();
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('refuses an unknown token and creates nothing', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  try {
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('unknown-token'), extraAcceptEmails[0]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[0]!}`).resolves.toHaveLength(0);
+  } finally {
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('refuses an already used Invitation', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('used-once'), expiresAt: futureDays(7) });
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('used-once'), extraAcceptEmails[0]!))).resolves.toMatchObject({ kind: 'accepted' });
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('used-once'), extraAcceptEmails[1]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[1]!}`).resolves.toHaveLength(0);
+  } finally {
+    await cleanAccept();
   }
 });
 
@@ -255,13 +280,13 @@ it.skipIf(!testDatabaseUrl)('lets an Invitation be used once even under simultan
   try {
     await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('single-use'), expiresAt: futureDays(7) });
 
-    const results = await Promise.all(Array.from({ length: 5 }, () => store.consume(hashInvitationToken('single-use'), new Date())));
-    expect(results.filter(Boolean)).toHaveLength(1);
+    const results = await Promise.all(extraAcceptEmails.map(email => store.acceptWithAccount(acceptInput(hashInvitationToken('single-use'), email))));
+    expect(results.filter(result => result.kind === 'accepted')).toHaveLength(1);
+    expect(results.filter(result => result.kind === 'invalid-link')).toHaveLength(extraAcceptEmails.length - 1);
     await expect(store.listPending('workspace-a', new Date())).resolves.toEqual([]);
-    await expect(store.consume(hashInvitationToken('unknown-token'), new Date())).resolves.toBe(false);
   } finally {
     await pool.end();
-    await cleanInvitations();
+    await cleanAccept();
   }
 });
 
@@ -356,8 +381,9 @@ it.skipIf(!testDatabaseUrl)('keeps at least one Owner under simultaneous demotio
 
 // Accepting an Invitation creates the account (same file: the seeded test database is shared).
 const acceptEmails = ['accept-one@example.test', 'accept-two@example.test', 'accept-race-a@example.test', 'accept-race-b@example.test'];
+const extraAcceptEmails = Array.from({ length: 5 }, (_, i) => `accept-extra-${i}@example.test`);
 const cleanAccept = async () => {
-  await connection!`DELETE FROM "user" WHERE email IN ${connection!(acceptEmails)}`;
+  await connection!`DELETE FROM "user" WHERE email IN ${connection!([...acceptEmails, ...extraAcceptEmails])}`;
   await cleanInvitations();
 };
 const acceptInput = (tokenHash: string, email: string) => ({ tokenHash, now: new Date(), userId: `acc-${email}`, name: 'Newcomer', email, passwordHash: 'x' });

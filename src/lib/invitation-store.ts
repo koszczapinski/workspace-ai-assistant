@@ -6,10 +6,10 @@ import type { InvitationStore } from './invitations';
 import type { AcceptanceStore } from './invitation-acceptance';
 
 /** The database layer's Invitation queries. An Invitation is "expired" when it is pending past its expiry; that state is derived, never stored. */
-export function createInvitationStore(database: typeof db): InvitationStore & AcceptanceStore & { consume: (tokenHash: string, now: Date) => Promise<boolean> } {
+export function createInvitationStore(database: typeof db): InvitationStore & AcceptanceStore {
   if (!database) {
     const unavailable = async (): Promise<never> => { throw new Error('Database unavailable'); };
-    return { create: unavailable, listPending: async () => [], revoke: async () => false, findPending: async () => null, acceptWithAccount: unavailable, consume: async () => false };
+    return { create: unavailable, listPending: async () => [], revoke: async () => false, findPending: async () => null, acceptWithAccount: unavailable };
   }
   return {
     async create({ workspaceId, createdBy, tokenHash, expiresAt }) {
@@ -60,14 +60,6 @@ export function createInvitationStore(database: typeof db): InvitationStore & Ac
         if (error === rollback) return { kind: 'email-unavailable' } as const;
         throw error;
       }
-    },
-    /** Atomically marks a pending, unexpired Invitation accepted; exactly one of several simultaneous callers wins. */
-    async consume(tokenHash, now) {
-      const rows = await database.update(invitations)
-        .set({ status: 'accepted', acceptedAt: now })
-        .where(and(eq(invitations.tokenHash, tokenHash), eq(invitations.status, 'pending'), gt(invitations.expiresAt, now)))
-        .returning({ id: invitations.id });
-      return rows.length === 1;
     },
   };
 }
