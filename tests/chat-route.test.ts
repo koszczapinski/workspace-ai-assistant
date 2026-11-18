@@ -135,6 +135,7 @@ describe('POST /api/chat', () => {
       const response = await post(makeRequest());
 
       expect(response.status).toBe(429);
+      expect(response.headers.get('Retry-After')).toBe('3600');
       expect(await response.json()).toMatchObject({ limit: 'workspace', retryAfterSeconds: 3600 });
     });
 
