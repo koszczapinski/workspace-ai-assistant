@@ -185,3 +185,92 @@ it.skipIf(!testDatabaseUrl)('keeps existing Memberships valid as Members when th
     await connection!.unsafe(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`);
   }
 });
+
+// Role changes, removal and the last-Owner guard (same seeded database, same file).
+async function withExtraUsers(ids: string[], workspaceId: string, roles: Array<'owner' | 'member'>, run: () => Promise<void>) {
+  try {
+    for (const [index, id] of ids.entries()) {
+      await connection!`INSERT INTO "user" (id, name, email) VALUES (${id}, ${id}, ${`${id}@example.test`})`;
+      await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES (${`m-${id}`}, ${id}, ${workspaceId}, ${roles[index]!})`;
+    }
+    await run();
+  } finally {
+    for (const id of ids) await connection!`DELETE FROM "user" WHERE id = ${id}`;
+  }
+}
+
+it.skipIf(!testDatabaseUrl)('changes a Member role and removes a Membership only in the given Workspace', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  await withExtraUsers(['role-test-x'], 'workspace-a', ['member'], async () => {
+    await expect(queries.changeRole('workspace-a', 'role-test-x', 'owner')).resolves.toBe('ok');
+    await expect(queries.ownedWorkspace('role-test-x', 'workspace-a')).resolves.not.toBeNull();
+    await expect(queries.changeRole('workspace-a', 'role-test-x', 'member')).resolves.toBe('ok');
+    await expect(queries.ownedWorkspace('role-test-x', 'workspace-a')).resolves.toBeNull();
+
+    // Wrong Workspace: no Membership there, nothing changes.
+    await expect(queries.changeRole('workspace-b', 'role-test-x', 'owner')).resolves.toBe('not-found');
+    await expect(queries.removeMember('workspace-b', 'role-test-x')).resolves.toBe('not-found');
+    await expect(queries.authorizedWorkspace('role-test-x', 'workspace-a')).resolves.not.toBeNull();
+
+    await expect(queries.removeMember('workspace-a', 'role-test-x')).resolves.toBe('ok');
+    await expect(queries.authorizedWorkspace('role-test-x', 'workspace-a')).resolves.toBeNull();
+    await expect(queries.listMembers('workspace-a')).resolves.toHaveLength(1);
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('removing a Membership leaves the User their other Workspaces', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  await withExtraUsers(['multi-test-x'], 'workspace-a', ['member'], async () => {
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id) VALUES ('m-multi-test-x-b', 'multi-test-x', 'workspace-b')`;
+    await expect(queries.removeMember('workspace-a', 'multi-test-x')).resolves.toBe('ok');
+    await expect(queries.listWorkspaces('multi-test-x')).resolves.toEqual([{ id: 'workspace-b', name: 'Harbor Analytics' }]);
+    await expect(queries.removeMember('workspace-b', 'multi-test-x')).resolves.toBe('ok');
+    await expect(queries.listWorkspaces('multi-test-x')).resolves.toEqual([]);
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('never removes, demotes or lets the last Owner leave', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const owner = await userId(emailB!);
+  await expect(queries.changeRole('workspace-b', owner, 'member')).resolves.toBe('last-owner');
+  await expect(queries.removeMember('workspace-b', owner)).resolves.toBe('last-owner');
+  await expect(queries.ownedWorkspace(owner, 'workspace-b')).resolves.not.toBeNull();
+
+  // A second Owner makes the first one free to go.
+  await withExtraUsers(['guard-test-x'], 'workspace-b', ['owner'], async () => {
+    await expect(queries.changeRole('workspace-b', owner, 'member')).resolves.toBe('ok');
+    await expect(queries.changeRole('workspace-b', 'guard-test-x', 'member')).resolves.toBe('last-owner');
+    await expect(queries.changeRole('workspace-b', owner, 'owner')).resolves.toBe('ok');
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('keeps at least one Owner under simultaneous demotions, removals and leaves', async () => {
+  const pool = postgres(testDatabaseUrl!, { max: 10 });
+  const queries = createWorkspaceQueries(drizzle(pool, { schema }));
+  const ids = ['race-test-1', 'race-test-2', 'race-test-3', 'race-test-4'];
+  const demoA = await userId(emailA!);
+  try {
+    // Demo user A plus four extra Owners in workspace-a, all trying to stop being Owners at once.
+    await withExtraUsers(ids, 'workspace-a', ['owner', 'owner', 'owner', 'owner'], async () => {
+      const everyone = [demoA, ...ids];
+      for (let round = 0; round < 5; round++) {
+        const results = await Promise.all(everyone.map((id, index) =>
+          index % 2 === 0 ? queries.changeRole('workspace-a', id, 'member') : queries.removeMember('workspace-a', id)));
+        expect(results.filter(result => result === 'ok')).toHaveLength(everyone.length - 1);
+        expect(results.filter(result => result === 'last-owner')).toHaveLength(1);
+        const [{ owners }] = await connection!<{ owners: number }[]>`SELECT count(*)::int AS owners FROM memberships WHERE workspace_id = 'workspace-a' AND role = 'owner'`;
+        expect(owners).toBe(1);
+
+        // Restore everyone as Owner for the next round.
+        for (const id of everyone) {
+          await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES (${`m-${id}`}, ${id}, 'workspace-a', 'owner')
+            ON CONFLICT (user_id, workspace_id) DO UPDATE SET role = 'owner'`;
+        }
+      }
+    });
+  } finally {
+    await pool.end();
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES ('restore-a', ${demoA}, 'workspace-a', 'owner')
+      ON CONFLICT (user_id, workspace_id) DO UPDATE SET role = 'owner'`;
+  }
+});

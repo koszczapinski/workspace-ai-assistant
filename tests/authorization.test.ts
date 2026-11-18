@@ -62,7 +62,7 @@ describe('workspace owner authorization wiring', () => {
     getSession.mockResolvedValue({ user: { id: 'user-a' } });
     owned.mockResolvedValue({ id: 'workspace-a', name: 'A' });
 
-    await expect(authorizeWorkspaceOwner('workspace-a')).resolves.toEqual({ kind: 'owner', workspace: { id: 'workspace-a', name: 'A' } });
+    await expect(authorizeWorkspaceOwner('workspace-a')).resolves.toEqual({ kind: 'owner', userId: 'user-a', workspace: { id: 'workspace-a', name: 'A' } });
     expect(owned).toHaveBeenCalledWith('user-a', 'workspace-a');
   });
 });

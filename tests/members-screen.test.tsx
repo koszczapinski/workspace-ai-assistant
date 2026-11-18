@@ -10,7 +10,7 @@ const { authorizeWorkspaceOwner, listMembers, redirect, notFound } = vi.hoisted(
   notFound: vi.fn((): never => { throw new Error('not-found'); }),
 }));
 
-vi.mock('next/navigation', () => ({ redirect, notFound }));
+vi.mock('next/navigation', () => ({ redirect, notFound, useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock('../src/lib/authorization', () => ({ authorizeWorkspaceOwner }));
 vi.mock('../src/lib/workspaces', () => ({ listMembers }));
 
@@ -48,6 +48,36 @@ describe('members screen', () => {
     expect(within(rows[1]!).getByText('bo@example.test')).toBeVisible();
     expect(within(rows[1]!).getByText('Member')).toBeVisible();
     expect(screen.getByRole('link', { name: /Back to Northstar Studio/ })).toHaveAttribute('href', '/w/workspace-a');
+  });
+
+  it('gives each row its actions: leave on the Owner themselves, and a last-Owner explanation when they are the only Owner', async () => {
+    authorizeWorkspaceOwner.mockResolvedValue({ kind: 'owner', userId: 'u1', workspace: { id: 'workspace-a', name: 'Northstar Studio' } });
+    listMembers.mockResolvedValue([
+      { userId: 'u1', name: 'Ada Owner', email: 'ada@example.test', role: 'owner' },
+      { userId: 'u2', name: 'Bo Member', email: 'bo@example.test', role: 'member' },
+    ]);
+
+    render(await MembersPage(params('workspace-a')));
+
+    const rows = screen.getAllByRole('listitem');
+    expect(within(rows[0]!).getByRole('button', { name: 'Leave workspace' })).toBeDisabled();
+    expect(within(rows[0]!).getByText(/last Owner/i)).toBeVisible();
+    expect(within(rows[1]!).getByRole('button', { name: 'Make Bo Member an Owner' })).toBeEnabled();
+    expect(within(rows[1]!).getByRole('button', { name: 'Remove Bo Member' })).toBeEnabled();
+  });
+
+  it('lets an Owner leave when another Owner exists', async () => {
+    authorizeWorkspaceOwner.mockResolvedValue({ kind: 'owner', userId: 'u1', workspace: { id: 'workspace-a', name: 'Northstar Studio' } });
+    listMembers.mockResolvedValue([
+      { userId: 'u1', name: 'Ada Owner', email: 'ada@example.test', role: 'owner' },
+      { userId: 'u2', name: 'Bo Owner', email: 'bo@example.test', role: 'owner' },
+    ]);
+
+    render(await MembersPage(params('workspace-a')));
+
+    expect(screen.getByRole('button', { name: 'Leave workspace' })).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'Remove Bo Owner' })).toBeEnabled();
+    expect(screen.queryByText(/last Owner/i)).toBeNull();
   });
 
   it('gives a Member who is not an Owner the not-found behavior without listing anyone', async () => {
