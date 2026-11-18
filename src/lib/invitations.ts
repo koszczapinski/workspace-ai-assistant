@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from 'node:crypto';
-import type { OwnerAccess } from './owner-authorization';
+import { ownerDenied, type OwnerAccess } from './owner-authorization';
 
 export const INVITATION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -25,19 +25,12 @@ type Deps = {
   generateToken?: () => string;
 };
 
-function denied(access: OwnerAccess): Response | null {
-  if (access.kind === 'owner') return null;
-  if (access.kind === 'unavailable') return Response.json({ error: 'Authentication unavailable' }, { status: 503 });
-  if (access.kind === 'unauthenticated') return Response.json({ error: 'Unauthorized' }, { status: 401 });
-  return Response.json({ error: 'Forbidden' }, { status: 403 });
-}
-
 /** Owner-only Invitation actions. Request bodies are never read: identity, role and Workspace come from the Session, the stored Membership and the address. */
 export function createInvitationHandlers({ authorizeOwner, store, now = () => new Date(), generateToken = generateInvitationToken }: Deps) {
   return {
     async create(request: Request, workspaceId: string): Promise<Response> {
       const access = await authorizeOwner(workspaceId);
-      if (access.kind !== 'owner') return denied(access)!;
+      if (access.kind !== 'owner') return ownerDenied(access);
 
       const token = generateToken();
       const expiresAt = new Date(now().getTime() + INVITATION_TTL_MS);
@@ -50,7 +43,7 @@ export function createInvitationHandlers({ authorizeOwner, store, now = () => ne
 
     async list(_request: Request, workspaceId: string): Promise<Response> {
       const access = await authorizeOwner(workspaceId);
-      if (access.kind !== 'owner') return denied(access)!;
+      if (access.kind !== 'owner') return ownerDenied(access);
 
       const pending = await store.listPending(access.workspace.id, now());
       return Response.json({ invitations: pending.map(i => ({ id: i.id, expiresAt: i.expiresAt.toISOString() })) }, { headers: { 'Cache-Control': 'no-store' } });
@@ -58,7 +51,7 @@ export function createInvitationHandlers({ authorizeOwner, store, now = () => ne
 
     async revoke(_request: Request, workspaceId: string, invitationId: string): Promise<Response> {
       const access = await authorizeOwner(workspaceId);
-      if (access.kind !== 'owner') return denied(access)!;
+      if (access.kind !== 'owner') return ownerDenied(access);
 
       const revoked = await store.revoke(access.workspace.id, invitationId, now());
       return revoked ? new Response(null, { status: 204 }) : Response.json({ error: 'Invitation not found' }, { status: 404 });

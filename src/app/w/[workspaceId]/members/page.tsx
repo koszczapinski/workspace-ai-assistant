@@ -4,11 +4,12 @@ import { redirect, notFound } from 'next/navigation';
 import { ArrowLeft, ShieldCheck, User } from 'lucide-react';
 import { authorizeWorkspaceOwner } from '@/lib/authorization';
 import { invitationStore } from '@/lib/invitation-store';
+import type { MemberRole } from '@/lib/member-types';
 import { listMembers } from '@/lib/workspaces';
 import { InvitationsPanel } from './invitations-panel';
 import MemberActions from '@/components/member-actions';
 
-const roleLabel = { owner: 'Owner', member: 'Member' } as const;
+const roleLabel: Record<MemberRole, string> = { owner: 'Owner', member: 'Member' };
 
 export default async function Members({ params }: { params: Promise<{ workspaceId: string }> }) {
   const { workspaceId } = await params;

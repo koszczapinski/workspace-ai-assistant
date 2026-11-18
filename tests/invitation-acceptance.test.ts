@@ -60,7 +60,8 @@ describe('accept invitation', () => {
     expect(response.status).toBe(400);
   });
 
-  it('answers an unknown, expired, revoked or used token with the neutral link-not-valid result', async () => {
+  // The store answers 'invalid-link' for all four states (its own tests pin each one); the handler must answer them identically.
+  it.each(['unknown', 'expired', 'revoked', 'used'])('answers an %s token with the neutral link-not-valid result', async () => {
     const { handler, signIn } = setup({ kind: 'invalid-link' });
     const response = await handler(request(valid));
     expect(response.status).toBe(404);

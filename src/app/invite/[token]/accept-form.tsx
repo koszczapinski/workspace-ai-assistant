@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { Button } from '@/components/ui/button';
+import { Button, buttonVariants } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 
 const shell = 'mx-auto grid min-h-[calc(100dvh-4rem)] max-w-md items-center px-4 py-10 sm:px-8';
@@ -29,6 +30,7 @@ export function AcceptForm({ token, workspaceName }: { token: string; workspaceN
   const [fields, setFields] = useState<Fields>({});
   const [error, setError] = useState('');
   const [pending, setPending] = useState(false);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +46,8 @@ export function AcceptForm({ token, workspaceName }: { token: string; workspaceN
       });
       const body = await response.json().catch(() => ({}));
       if (response.status === 201) {
-        router.push(body.signedIn ? `/w/${body.workspaceId}` : '/login');
+        if (body.signedIn) router.push(`/w/${body.workspaceId}`);
+        else setNeedsSignIn(true);
         return;
       }
       if (body.fields) setFields(body.fields);
@@ -67,6 +70,20 @@ export function AcceptForm({ token, workspaceName }: { token: string; workspaceN
       {fields[name] && <span id={`${name}-error`} className="block text-sm font-normal text-destructive">{fields[name]}</span>}
     </label>
   );
+
+  if (needsSignIn) {
+    return (
+      <main className={shell}>
+        <section className={card} aria-labelledby="created-title">
+          <h1 id="created-title" className="text-2xl font-semibold tracking-tight">Account created</h1>
+          <p role="status" className="mt-3 text-sm leading-6 text-muted-foreground">
+            Your account was created. We could not sign you in automatically, so sign in to join {workspaceName}.
+          </p>
+          <Link href="/login" className={buttonVariants({ className: 'mt-6 h-11 w-full rounded-full' })}>Go to sign in</Link>
+        </section>
+      </main>
+    );
+  }
 
   return (
     <main className={shell}>

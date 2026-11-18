@@ -52,6 +52,20 @@ describe('pending Invitations section', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Link copied'));
   });
 
+  it('announces a failed link copy and keeps the link selectable for manual copying', async () => {
+    writeText.mockRejectedValueOnce(new Error('denied'));
+    fetchMock.mockResolvedValueOnce(json({ id: 'inv-2', link: 'http://localhost/invite/secret-token', expiresAt: '2030-01-09T00:00:00.000Z' }, 201));
+    render(<InvitationsPanel workspaceId="workspace-a" initialInvitations={[]} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Create invitation link' }));
+    await screen.findByRole('textbox', { name: 'Invitation link' });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Copy link' }));
+
+    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent('Could not copy automatically. Select the link and copy it manually.'));
+    expect(screen.getByRole('textbox', { name: 'Invitation link' })).toHaveValue('http://localhost/invite/secret-token');
+    expect(screen.getByRole('status')).not.toHaveTextContent('Link copied');
+  });
+
   it('revokes an Invitation and announces the result', async () => {
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 204 }));
     render(<InvitationsPanel workspaceId="workspace-a" initialInvitations={existing} />);

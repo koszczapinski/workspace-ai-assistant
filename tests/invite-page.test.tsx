@@ -52,6 +52,19 @@ describe('invitation page', () => {
     }));
   });
 
+  it('tells a new Member the account exists and they must sign in when automatic sign-in failed', async () => {
+    findPending.mockResolvedValue({ workspaceId: 'workspace-a', workspaceName: 'Northstar Studio' });
+    fetchMock.mockResolvedValueOnce(json({ workspaceId: 'workspace-a', signedIn: false }, 201));
+    await open();
+    fill('Name', 'Ada'); fill('Email', 'ada@example.test'); fill('Password', 'long-enough-pw');
+    fireEvent.click(screen.getByRole('button', { name: 'Create account and join' }));
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Your account was created. We could not sign you in automatically, so sign in to join Northstar Studio.'));
+    expect(screen.getByRole('link', { name: 'Go to sign in' })).toHaveAttribute('href', '/login');
+    expect(screen.queryByLabelText('Password')).toBeNull();
+    expect(push).not.toHaveBeenCalled();
+  });
+
   it('announces readable field errors next to their inputs', async () => {
     findPending.mockResolvedValue({ workspaceId: 'workspace-a', workspaceName: 'Northstar Studio' });
     fetchMock.mockResolvedValueOnce(json({ error: 'Check the highlighted details.', fields: { password: 'Use at least 8 characters for your password.' } }, 400));
