@@ -6,7 +6,7 @@ This ticket works against the `429` contract from ticket 01 and can be built in 
 
 **Blocked by:** 01 (Per-User Usage limit, server end to end).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] A `429` is shown as its own message type, separate from the provider-failure error.
 - [ ] The wording differs between the User's limit and the Workspace's daily limit, and states the wait time derived from `Retry-After` in plain language.
