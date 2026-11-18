@@ -15,7 +15,7 @@ Goal: keep the project a portfolio piece that shows depth. One small, finished i
    - Title is the truncated first message; the Workspace view gets a Conversations list and "New conversation".
    - FR-07 stays: changing Workspace or signing out cancels the request and clears UI state; the stored Conversation reloads from the server.
 3. **Membership management and admin UI** (one increment).
-   - Membership gets a role: **Owner** or **Member**; only Owners manage members and see the admin UI. Seeded Demo users are Owners of their Workspace.
+   - Membership gets a role (`owner` or `member`). A **Member** is any User with a Membership; an **Owner** is a Member who also manages Memberships and Invitations and sees the admin UI. Seeded Demo users are Owners of their Workspace.
    - Invitations: an Owner creates a single-use, expiring link; the invitee creates an account and joins as a Member. No email delivery, no public signup.
 
 ## Later (not excluded, not yet ordered)
