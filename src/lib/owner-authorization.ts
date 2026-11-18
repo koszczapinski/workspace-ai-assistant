@@ -2,7 +2,7 @@ export type OwnerAccess =
   | { kind: 'unavailable' }
   | { kind: 'unauthenticated' }
   | { kind: 'forbidden' }
-  | { kind: 'owner'; workspace: { id: string; name: string } };
+  | { kind: 'owner'; userId: string; workspace: { id: string; name: string } };
 
 type OwnerAuthorizationDeps = {
   /** Resolves the server Session; null when anonymous. */
@@ -22,6 +22,6 @@ export function createOwnerAuthorization({ getSession, findOwnedWorkspace }: Own
 
     const workspace = await findOwnedWorkspace(session.user.id, workspaceId);
     if (!workspace) return { kind: 'forbidden' };
-    return { kind: 'owner', workspace };
+    return { kind: 'owner', userId: session.user.id, workspace };
   };
 }

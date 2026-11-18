@@ -11,7 +11,7 @@ function setup(who: Who) {
   const owners: Record<string, string> = { 'workspace-a': 'owner-a', 'workspace-b': 'owner-b' };
   const authorizeOwner = vi.fn(async (workspaceId: string): Promise<OwnerAccess> => {
     if (who === 'anonymous') return { kind: 'unauthenticated' };
-    return owners[workspaceId] === who ? { kind: 'owner', workspace: { id: workspaceId, name: workspaceId } } : { kind: 'forbidden' };
+    return owners[workspaceId] === who ? { kind: 'owner', userId: who, workspace: { id: workspaceId, name: workspaceId } } : { kind: 'forbidden' };
   });
   const created: { workspaceId: string; createdBy: string; tokenHash: string; expiresAt: Date }[] = [];
   const store: InvitationStore = {
@@ -19,7 +19,7 @@ function setup(who: Who) {
     listPending: vi.fn(async (workspaceId: string) => workspaceId === 'workspace-a' ? [{ id: 'inv-x', expiresAt: new Date(NOW.getTime() + DAY) }] : []),
     revoke: vi.fn(async (workspaceId: string, id: string) => workspaceId === 'workspace-a' && id === 'inv-x'),
   };
-  const handlers = createInvitationHandlers({ authorizeOwner, getUserId: async () => who, store, now: () => NOW, generateToken: () => 'fixed-token-value' });
+  const handlers = createInvitationHandlers({ authorizeOwner, store, now: () => NOW, generateToken: () => 'fixed-token-value' });
   return { handlers, store, created };
 }
 

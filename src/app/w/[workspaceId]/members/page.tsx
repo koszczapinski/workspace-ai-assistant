@@ -6,6 +6,7 @@ import { authorizeWorkspaceOwner } from '@/lib/authorization';
 import { invitationStore } from '@/lib/invitation-store';
 import { listMembers } from '@/lib/workspaces';
 import { InvitationsPanel } from './invitations-panel';
+import MemberActions from '@/components/member-actions';
 
 const roleLabel = { owner: 'Owner', member: 'Member' } as const;
 
@@ -17,6 +18,7 @@ export default async function Members({ params }: { params: Promise<{ workspaceI
 
   const members = await listMembers(access.workspace.id);
   const pending = await invitationStore.listPending(access.workspace.id, new Date());
+  const ownerCount = members.filter(member => member.role === 'owner').length;
 
   return (
     <main className="relative mx-auto min-h-[calc(100dvh-4rem)] max-w-6xl overflow-hidden px-4 py-10 sm:px-8 sm:py-14">
@@ -33,7 +35,7 @@ export default async function Members({ params }: { params: Promise<{ workspaceI
         <hr className="gradient-divider my-7" />
         <ul className="grid gap-3" aria-label="Workspace members">
           {members.map(member => (
-            <li key={member.userId} className="workspace-card">
+            <li key={member.userId} className="workspace-card flex-wrap">
               <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted text-foreground">
                 {member.role === 'owner' ? <ShieldCheck aria-hidden="true" className="size-5" /> : <User aria-hidden="true" className="size-5" />}
               </span>
@@ -42,6 +44,12 @@ export default async function Members({ params }: { params: Promise<{ workspaceI
                 <span className="mt-1 block truncate text-xs text-muted-foreground">{member.email}</span>
               </span>
               <span className="shrink-0 rounded-full border px-3 py-1 text-xs font-medium">{roleLabel[member.role]}</span>
+              <MemberActions
+                workspaceId={access.workspace.id}
+                member={member}
+                isSelf={member.userId === access.userId}
+                isLastOwner={member.role === 'owner' && ownerCount === 1}
+              />
             </li>
           ))}
         </ul>

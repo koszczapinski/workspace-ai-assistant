@@ -20,8 +20,6 @@ export type InvitationStore = {
 
 type Deps = {
   authorizeOwner: (workspaceId: string) => Promise<OwnerAccess>;
-  /** The Session's user id (identity never comes from the request). */
-  getUserId: () => Promise<string | null>;
   store: InvitationStore;
   now?: () => Date;
   generateToken?: () => string;
@@ -35,17 +33,15 @@ function denied(access: OwnerAccess): Response | null {
 }
 
 /** Owner-only Invitation actions. Request bodies are never read: identity, role and Workspace come from the Session, the stored Membership and the address. */
-export function createInvitationHandlers({ authorizeOwner, getUserId, store, now = () => new Date(), generateToken = generateInvitationToken }: Deps) {
+export function createInvitationHandlers({ authorizeOwner, store, now = () => new Date(), generateToken = generateInvitationToken }: Deps) {
   return {
     async create(request: Request, workspaceId: string): Promise<Response> {
       const access = await authorizeOwner(workspaceId);
       if (access.kind !== 'owner') return denied(access)!;
-      const userId = await getUserId();
-      if (!userId) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
       const token = generateToken();
       const expiresAt = new Date(now().getTime() + INVITATION_TTL_MS);
-      const invitation = await store.create({ workspaceId: access.workspace.id, createdBy: userId, tokenHash: hashInvitationToken(token), expiresAt });
+      const invitation = await store.create({ workspaceId: access.workspace.id, createdBy: access.userId, tokenHash: hashInvitationToken(token), expiresAt });
       return Response.json(
         { id: invitation.id, link: `${new URL(request.url).origin}/invite/${token}`, expiresAt: expiresAt.toISOString() },
         { status: 201, headers: { 'Cache-Control': 'no-store' } },

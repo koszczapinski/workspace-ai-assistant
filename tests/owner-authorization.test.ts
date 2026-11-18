@@ -14,7 +14,7 @@ describe('owner authorization', () => {
     const findOwnedWorkspace = fakeStore();
     const authorize = createOwnerAuthorization({ getSession: async () => ({ user: { id: 'user-owner' } }), findOwnedWorkspace });
 
-    await expect(authorize('workspace-a')).resolves.toEqual({ kind: 'owner', workspace: workspaceA });
+    await expect(authorize('workspace-a')).resolves.toEqual({ kind: 'owner', userId: 'user-owner', workspace: workspaceA });
     expect(findOwnedWorkspace).toHaveBeenCalledWith('user-owner', 'workspace-a');
   });
 
