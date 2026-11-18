@@ -353,3 +353,79 @@ it.skipIf(!testDatabaseUrl)('keeps at least one Owner under simultaneous demotio
       ON CONFLICT (user_id, workspace_id) DO UPDATE SET role = 'owner'`;
   }
 });
+
+// Accepting an Invitation creates the account (same file: the seeded test database is shared).
+const acceptEmails = ['accept-one@example.test', 'accept-two@example.test', 'accept-race-a@example.test', 'accept-race-b@example.test'];
+const cleanAccept = async () => {
+  await connection!`DELETE FROM "user" WHERE email IN ${connection!(acceptEmails)}`;
+  await cleanInvitations();
+};
+const acceptInput = (tokenHash: string, email: string) => ({ tokenHash, now: new Date(), userId: `acc-${email}`, name: 'Newcomer', email, passwordHash: 'x' });
+
+it.skipIf(!testDatabaseUrl)('creates the account, the Member Membership and consumes the Invitation in one step, and the new User can sign in', async () => {
+  const owner = await userId(emailA!);
+  const pool = postgres(testDatabaseUrl!, { max: 2 });
+  try {
+    const store = createInvitationStore(drizzle(pool, { schema }));
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-ok'), expiresAt: futureDays(7) });
+    const { hashPassword } = await import('better-auth/crypto');
+
+    const result = await store.acceptWithAccount({ ...acceptInput(hashInvitationToken('accept-ok'), acceptEmails[0]!), passwordHash: await hashPassword('brand-new-password') });
+    expect(result).toEqual({ kind: 'accepted', workspaceId: 'workspace-a' });
+
+    const queries = createWorkspaceQueries(drizzle(pool, { schema }));
+    await expect(queries.authorizedWorkspace(`acc-${acceptEmails[0]}`, 'workspace-a')).resolves.toMatchObject({ id: 'workspace-a' });
+    await expect(queries.ownedWorkspace(`acc-${acceptEmails[0]}`, 'workspace-a')).resolves.toBeNull();
+    await expect(store.listPending('workspace-a', new Date())).resolves.toEqual([]);
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('accept-ok'), acceptEmails[1]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(store.findPending(hashInvitationToken('accept-ok'), new Date())).resolves.toBeNull();
+
+    const auth = betterAuth({
+      database: drizzleAdapter(drizzle(pool, { schema }), { provider: 'pg' }),
+      emailAndPassword: { enabled: true, disableSignUp: true },
+      baseURL: 'http://localhost:3000',
+      secret: 'integration-test-secret-that-is-not-for-production',
+    });
+    const signedIn = await auth.api.signInEmail({ body: { email: acceptEmails[0]!, password: 'brand-new-password' } });
+    expect(signedIn.user.id).toBe(`acc-${acceptEmails[0]}`);
+  } finally {
+    await pool.end();
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('fails for an email that already has an account without consuming the Invitation', async () => {
+  const owner = await userId(emailA!);
+  const pool = postgres(testDatabaseUrl!, { max: 2 });
+  try {
+    const store = createInvitationStore(drizzle(pool, { schema }));
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-dup'), expiresAt: futureDays(7) });
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('accept-dup'), emailB!))).resolves.toEqual({ kind: 'email-unavailable' });
+    await expect(store.findPending(hashInvitationToken('accept-dup'), new Date())).resolves.toMatchObject({ workspaceId: 'workspace-a' });
+    const [{ users }] = await connection!<{ users: number }[]>`SELECT count(*)::int AS users FROM "user" WHERE id = ${`acc-${emailB}`}`;
+    expect(users).toBe(0);
+  } finally {
+    await pool.end();
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('lets only one of several simultaneous acceptances win and leaves one account', async () => {
+  const owner = await userId(emailA!);
+  const pool = postgres(testDatabaseUrl!, { max: 6 });
+  try {
+    const store = createInvitationStore(drizzle(pool, { schema }));
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-race'), expiresAt: futureDays(7) });
+    const emails = [acceptEmails[2]!, acceptEmails[3]!, acceptEmails[2]!, acceptEmails[3]!];
+    const results = await Promise.all(emails.map(email => store.acceptWithAccount(acceptInput(hashInvitationToken('accept-race'), email))));
+    expect(results.filter(r => r.kind === 'accepted')).toHaveLength(1);
+    const raceEmails = [acceptEmails[2]!, acceptEmails[3]!];
+    const [{ users }] = await connection!<{ users: number }[]>`SELECT count(*)::int AS users FROM "user" WHERE email IN ${connection!(raceEmails)}`;
+    expect(users).toBe(1);
+    const [{ members }] = await connection!<{ members: number }[]>`SELECT count(*)::int AS members FROM memberships WHERE user_id IN (SELECT id FROM "user" WHERE email IN ${connection!(raceEmails)})`;
+    expect(members).toBe(1);
+  } finally {
+    await pool.end();
+    await cleanAccept();
+  }
+});
