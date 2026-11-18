@@ -1,0 +1,53 @@
+# Workspace AI Assistant
+
+A small multi-tenant AI chat product: signed-in users chat with an assistant scoped to a Workspace they belong to. The server alone decides who may access which Workspace.
+
+## Language
+
+### Access
+
+**User**:
+A person who signs in with credentials. A User sees only the Workspaces they have a Membership in.
+
+**Session**:
+A User's signed-in state, held by the server. Only authentication — never a chat.
+_Avoid_: using "session" for a Conversation
+
+**Workspace**:
+An isolated space with its own Assistant instructions that Users can chat in. It is the unit of tenant isolation.
+_Avoid_: Tenant (as the name of the thing; "tenant isolation" only describes the property), organization, team
+
+**Membership**:
+The link between one User and one Workspace. It is the only source of access to a Workspace, and a User has at most one per Workspace.
+_Avoid_: Permission, role, access list
+
+**Demo user**:
+A synthetic User created by the seed, with exactly one Membership and a Workspace whose Assistant instructions differ from the other Demo user's (A↔A, B↔B). Used to verify isolation.
+_Avoid_: Test user, seed user
+
+**Unauthenticated**:
+A request with no Session. It is rejected before any Workspace lookup.
+
+**Forbidden**:
+A request with a Session but no Membership in the requested Workspace. It is rejected before any call to the AI provider and does not reveal whether the Workspace exists.
+_Avoid_: Unauthorized (for this case)
+
+### Assistant
+
+**Assistant instructions**:
+Text owned by a Workspace that the server loads to shape the assistant's responses. They influence answers; they never enforce isolation, and clients cannot supply or override them.
+_Avoid_: System prompt, system instructions
+
+**Conversation**:
+The messages exchanged with the assistant in one Workspace, kept only in browser memory. It is never persisted and does not survive a reload, a Workspace change, or sign-out.
+_Avoid_: Session, thread
+
+### Response lifecycle
+
+**Stop**:
+The User's action to end an active response early. The partial text stays visible and the response is marked **Stopped**.
+_Avoid_: Abort, interrupt
+
+**Cancel**:
+The technical ending of an active request when the Workspace changes or the User signs out. Unlike Stop, it clears the Conversation, partial output, and errors, so late chunks can never appear elsewhere.
+_Avoid_: Using "cancel" for the User's Stop action
