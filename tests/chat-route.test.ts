@@ -160,6 +160,53 @@ describe('POST /api/chat', () => {
       expect(stream).not.toHaveBeenCalled();
     });
 
+    it('gives the limiter the session User and authorized Workspace, never client-supplied ids', async () => {
+      const check = vi.fn(async () => ({ allowed: true as const }));
+      const post = createChatPost({
+        getSession: async () => user,
+        authorize: authorized,
+        stream: vi.fn(async () => new Response('ok')),
+        limiter: { check },
+      });
+
+      await post(makeRequest(undefined, { userId: 'attacker', user: { id: 'attacker' } }));
+
+      expect(check).toHaveBeenCalledTimes(1);
+      expect(check).toHaveBeenCalledWith({ userId: 'user-a', workspaceId: 'workspace-a' });
+    });
+
+    it('calls the limiter once per request and passes independent Users and Workspaces through separately', async () => {
+      const check = vi.fn(async (input: { userId: string; workspaceId: string }) => ({ allowed: true as const, input }));
+      const sessions: Record<string, { user: { id: string } }> = { a: { user: { id: 'user-a' } }, b: { user: { id: 'user-b' } } };
+      let current = 'a';
+      const post = createChatPost({
+        getSession: async () => sessions[current],
+        authorize: async (_userId: string, workspaceId: string) => ({
+          kind: 'authorized' as const,
+          workspace: { ...authorizedWorkspace, id: workspaceId },
+        }),
+        stream: vi.fn(async () => new Response('ok')),
+        limiter: { check },
+      });
+      const requestFor = (workspaceId: string) => new Request('http://localhost/api/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ workspaceId, messages: [{ role: 'user', parts: [{ type: 'text', text: 'Hi' }] }] }),
+      });
+
+      await post(requestFor('workspace-a'));
+      await post(requestFor('workspace-b'));
+      current = 'b';
+      await post(requestFor('workspace-a'));
+
+      expect(check).toHaveBeenCalledTimes(3);
+      expect(check.mock.calls.map(([input]) => input)).toEqual([
+        { userId: 'user-a', workspaceId: 'workspace-a' },
+        { userId: 'user-a', workspaceId: 'workspace-b' },
+        { userId: 'user-b', workspaceId: 'workspace-a' },
+      ]);
+    });
+
     it('counts a retry after a provider failure like any other request', async () => {
       const check = vi.fn(async () => ({ allowed: true as const }));
       const stream = vi.fn()

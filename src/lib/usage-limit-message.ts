@@ -1,4 +1,6 @@
-export type UsageLimit = { limit: 'user' | 'workspace'; retryAfterSeconds: number };
+import type { UsageLimitKind } from './usage-limit-types';
+
+export type UsageLimit = { limit: UsageLimitKind; retryAfterSeconds: number };
 
 /** The chat transport exposes a non-2xx response body as `error.message`; recognise the 429 contract in it. */
 export function parseUsageLimit(message: string): UsageLimit | null {
@@ -19,7 +21,8 @@ function plural(count: number, unit: string) {
 
 export function describeWait(seconds: number): string {
   if (seconds < 60) return 'less than a minute';
-  if (seconds < 3600) return `about ${plural(Math.round(seconds / 60), 'minute')}`;
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `about ${plural(minutes, 'minute')}`;
   return `about ${plural(Math.round(seconds / 3600), 'hour')}`;
 }
 

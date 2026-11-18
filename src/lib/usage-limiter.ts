@@ -1,7 +1,8 @@
 import { sql } from 'drizzle-orm';
 import { db } from './db';
+import type { UsageLimitKind } from './usage-limit-types';
 
-export type UsageLimitKind = 'user' | 'workspace';
+export type { UsageLimitKind };
 
 export type UsageDecision =
   | { allowed: true }
@@ -18,6 +19,11 @@ export const DEFAULT_USER_PER_MINUTE = 10;
 export const DEFAULT_WORKSPACE_PER_DAY = 200;
 const MINUTE_MS = 60_000;
 const DAY_MS = 86_400_000;
+
+const windowMs = (kind: UsageLimitKind) => (kind === 'user' ? MINUTE_MS : DAY_MS);
+const windowStart = (kind: UsageLimitKind, nowMs: number) => Math.floor(nowMs / windowMs(kind)) * windowMs(kind);
+const windowEnd = (kind: UsageLimitKind, nowMs: number) => windowStart(kind, nowMs) + windowMs(kind);
+const toIso = (ms: number) => new Date(ms).toISOString();
 
 function positiveInt(value: string | undefined, fallback: number) {
   const parsed = Number(value);
@@ -52,14 +58,15 @@ export function createUsageLimiter(
 ): UsageLimiter {
   let lastPurgedWindowMs: number | null = null;
 
-  async function purgeExpired(store: NonNullable<typeof db>, minuteStartMs: number, dayStartMs: number) {
+  async function purgeExpired(store: NonNullable<typeof db>, nowMs: number) {
+    const minuteStartMs = windowStart('user', nowMs);
     if (lastPurgedWindowMs === minuteStartMs) return;
     lastPurgedWindowMs = minuteStartMs;
     try {
       await store.execute(sql`
         DELETE FROM usage_counters
-        WHERE (kind = 'user' AND window_start < ${new Date(minuteStartMs).toISOString()}::timestamptz)
-           OR (kind = 'workspace' AND window_start < ${new Date(dayStartMs).toISOString()}::timestamptz)`);
+        WHERE (kind = 'user' AND window_start < ${toIso(minuteStartMs)}::timestamptz)
+           OR (kind = 'workspace' AND window_start < ${toIso(windowStart('workspace', nowMs))}::timestamptz)`);
     } catch {
       lastPurgedWindowMs = null; // best effort: never fail a chat request over housekeeping
     }
@@ -69,20 +76,17 @@ export function createUsageLimiter(
     async check({ userId, workspaceId }) {
       if (!database) throw new Error('Usage limiter store is not configured');
       const nowMs = now().getTime();
-      const minuteStartMs = Math.floor(nowMs / MINUTE_MS) * MINUTE_MS;
-      const dayStartMs = Math.floor(nowMs / DAY_MS) * DAY_MS;
 
       // The increment only happens while under the limit; no row returned means it was reached.
       const consume = async (
         tx: Pick<NonNullable<typeof db>, 'execute'>,
         kind: UsageLimitKind,
         subjectId: string,
-        windowStartMs: number,
         limit: number,
       ) => {
         const rows = await tx.execute(sql`
           INSERT INTO usage_counters (kind, subject_id, window_start, count)
-          VALUES (${kind}, ${subjectId}, ${new Date(windowStartMs).toISOString()}::timestamptz, 1)
+          VALUES (${kind}, ${subjectId}, ${toIso(windowStart(kind, nowMs))}::timestamptz, 1)
           ON CONFLICT (kind, subject_id, window_start)
           DO UPDATE SET count = usage_counters.count + 1
           WHERE usage_counters.count < ${limit}
@@ -92,19 +96,19 @@ export function createUsageLimiter(
 
       try {
         await database.transaction(async tx => {
-          await consume(tx, 'workspace', workspaceId, dayStartMs, config.workspacePerDay);
-          await consume(tx, 'user', userId, minuteStartMs, config.userPerMinute);
+          await consume(tx, 'workspace', workspaceId, config.workspacePerDay);
+          await consume(tx, 'user', userId, config.userPerMinute);
         });
       } catch (error) {
         if (!(error instanceof Rejected)) throw error;
-        const windowEndMs = error.limit === 'user' ? minuteStartMs + MINUTE_MS : dayStartMs + DAY_MS;
+        const windowEndMs = windowEnd(error.limit, nowMs);
         return {
           allowed: false,
           limit: error.limit,
           retryAfterSeconds: Math.max(1, Math.ceil((windowEndMs - nowMs) / 1000)),
         };
       }
-      await purgeExpired(database, minuteStartMs, dayStartMs);
+      await purgeExpired(database, nowMs);
       return { allowed: true };
     },
   };
