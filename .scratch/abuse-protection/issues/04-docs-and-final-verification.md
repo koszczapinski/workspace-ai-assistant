@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 (Per-Workspace daily Usage limit and counter cleanup), 03 (Usage limit message in the chat).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The README has a section describing both Usage limits, their defaults, and the environment variables that override them; `.env.example` is complete and consistent.
 - [ ] The README states that the demo may be exposed publicly only with these limits configured, matching the precondition in the MVP spec.
