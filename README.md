@@ -65,6 +65,31 @@ The demo may be exposed on a public URL only with these Usage limits configured 
 
 This is basic protection, not production-grade abuse protection. It does not cover: public signup or bot/account-creation defense, per-IP or per-session rate limiting, CAPTCHA, limits on login attempts, token- or cost-based budgets (it counts requests, not tokens), alerting or monitoring, or a global spend cap across all Workspaces. Each limit is a fixed window, so a User can burst up to twice the per-minute limit across a window boundary.
 
+## Roles, Members and Invitations
+
+Every Membership carries a role: **Member** (the default) or **Owner**. Any Member chats exactly the same way; an Owner is a Member who also manages the Workspace's Memberships and Invitations. The seed makes each Demo user the Owner of their own Workspace. The server derives identity and role only from the Session and the stored Membership, never from submitted data, and re-checks the Owner role on every management request. A Member without the Owner role gets no entry point and gets the not-found page at the members address (`/w/<id>/members`), so the Workspace's existence is not revealed.
+
+An Owner can, for their own Workspace only:
+
+- see every Member and their role;
+- create, list and revoke Invitations;
+- make a Member an Owner, make an Owner a Member, remove a Member, or leave the Workspace.
+
+A Workspace always keeps at least one Owner: removing, demoting or leaving as the last Owner is blocked, with an explanation on screen. Removal takes effect on the removed User's next request; a response already streaming may finish.
+
+### Invitation flow
+
+1. The Owner opens Members and selects Create invitation link. The link is shown once, with a Copy link action; afterwards the Owner sees only a pending Invitation's expiry and can revoke it.
+2. An Invitation is single-use, valid for 7 days, and not tied to an email address. Only a hash of its token is stored.
+3. The invited person opens the link without a Session, sees which Workspace they are joining, and enters name, email and password. The server creates the account and the Member Membership in one atomic step, signs them in and sends them to the Workspace.
+4. An unknown, expired, revoked or already used link shows the same neutral "This link is not valid" page. If the email already has an account, acceptance fails with a generic message that does not reveal that, and the Invitation is not consumed.
+
+Public signup stays disabled: accounts exist only through the seed or an Invitation.
+
+### Out of scope for this feature
+
+Creating or editing Workspaces, inviting an existing User, email delivery of Invitations, password reset, email verification, rate limiting of the acceptance endpoint (Usage limits cover chat only), and more than two roles.
+
 ## Tenant isolation and streaming
 
 The server reads identity from the Better Auth session and checks `(userId, workspaceId)` membership before reading workspace instructions or invoking the provider. The chat endpoint accepts neither a user ID nor an authoritative system prompt from clients. Tests verify that anonymous and non-member requests do not reach the provider; browser and UI tests cover incremental streaming and workspace state isolation.
@@ -101,6 +126,10 @@ flowchart LR
 3. Start another response and select Stop; verify partial output remains and is marked stopped.
 4. In a separate private browser session, sign in as User B and verify only Harbor Analytics appears.
 5. Try opening `/w/workspace-a` in User B's session and confirm access is denied.
+6. Back in User A's session (an Owner), open Northstar Studio and select Members. Select Create invitation link and copy the link; it is shown only once.
+7. Open the link in a private browser session without a Session, enter a name, an email and a password, and select Create account and join. The new Member lands in Northstar Studio.
+8. Reload the link: it now shows "This link is not valid" because Invitations are single-use.
+9. In User A's session reload Members: the new person is listed as a Member. Select Remove to take their access away again.
 
 The script sends two messages from one User, well within the default Usage limits, so it never reaches them.
 
@@ -108,9 +137,9 @@ The committed [chat screenshot](output/playwright/critical-journey.png) shows th
 
 ## Implemented features and limitations
 
-Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, membership-filtered workspace list, server-side page and chat authorization, workspace-specific instructions, streamed chat, stop/retry controls, in-memory conversation state, fake-provider tests, and a Playwright login-and-stream journey.
+Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, Member and Owner roles, an Owner-only members screen with Invitations by link (create, revoke, accept with account creation), a last-Owner guard, membership-filtered workspace list, server-side page and chat authorization, workspace-specific instructions, streamed chat, stop/retry controls, in-memory conversation state, fake-provider tests, and Playwright journeys for login-and-stream and for creating and accepting an Invitation.
 
-Limitations: no persisted chat, public signup, invitations, membership administration, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection (only the basic Usage limits above exist). The demo may go public only with the Usage limits configured. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
+Limitations: no persisted chat, public signup, email delivery of Invitations, inviting existing Users, Workspace creation or editing, password reset, more than two roles, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection (only the basic Usage limits above exist). The demo may go public only with the Usage limits configured. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
 
 Agent-assisted implementation followed the `implement-spec` and `tdd` skills. The Playwright skill was consulted for browser-artifact conventions; the required automated test is implemented with the repository's installed `@playwright/test` convention. No claim is made that other skills or agents were used.
 

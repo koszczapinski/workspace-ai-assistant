@@ -8,5 +8,5 @@ export default async function Workspace({ params }: { params: Promise<{ workspac
   const access = await authorizeWorkspace(workspaceId);
   if (access.kind === 'unavailable' || access.kind === 'unauthenticated') redirect('/login');
   if (access.kind === 'forbidden') notFound();
-  return <Chat id={access.workspace.id} name={access.workspace.name} />;
+  return <Chat id={access.workspace.id} name={access.workspace.name} isOwner={access.workspace.role === 'owner'} />;
 }

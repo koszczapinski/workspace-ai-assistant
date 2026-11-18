@@ -18,8 +18,20 @@ An isolated space with its own Assistant instructions that Users can chat in. It
 _Avoid_: Tenant (as the name of the thing; "tenant isolation" only describes the property), organization, team
 
 **Membership**:
-The link between one User and one Workspace. It is the only source of access to a Workspace, and a User has at most one per Workspace.
-_Avoid_: Permission, role, access list
+The link between one User and one Workspace, carrying the User's role there (Owner or Member, Member by default). It is the only source of access to a Workspace, and a User has at most one per Workspace.
+_Avoid_: Permission, access list
+
+**Member**:
+Any User with a Membership in a Workspace. Every Member chats the same way, whatever their role.
+_Avoid_: Participant, seat
+
+**Owner**:
+A Member who also manages the Workspace's Memberships and Invitations. The server derives the role only from the Session and the stored Membership, never from submitted data.
+_Avoid_: Admin, manager
+
+**Invitation**:
+A single-use, expiring link from an Owner that lets one person create an account and join as a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
+_Avoid_: Invite code, signup link
 
 **Demo user**:
 A synthetic User created by the seed, with exactly one Membership and a Workspace whose Assistant instructions differ from the other Demo user's (A↔A, B↔B). Used to verify isolation.
@@ -33,7 +45,7 @@ _Avoid_: quota, throttle
 A request with no Session. It is rejected before any Workspace lookup.
 
 **Forbidden**:
-A request with a Session but no Membership in the requested Workspace. It is rejected before any call to the AI provider and does not reveal whether the Workspace exists.
+A request with a Session but no Membership in the requested Workspace, or, for Owner-only actions, a Membership without the Owner role. It is rejected before any call to the AI provider and does not reveal whether the Workspace exists.
 _Avoid_: Unauthorized (for this case)
 
 ### Assistant

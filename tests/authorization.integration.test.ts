@@ -1,17 +1,24 @@
+import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { beforeAll, expect, it } from 'vitest';
+import path from 'node:path';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../src/lib/schema';
 import { createWorkspaceQueries } from '../src/lib/workspaces';
+import { createInvitationStore } from '../src/lib/invitation-store';
+import { generateInvitationToken, hashInvitationToken } from '../src/lib/invitations';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const emailA = process.env.DEMO_USER_A_EMAIL;
 const passwordA = process.env.DEMO_USER_A_PASSWORD;
 const emailB = process.env.DEMO_USER_B_EMAIL;
 const passwordB = process.env.DEMO_USER_B_PASSWORD;
+
+const migration = (name: string) => readFileSync(path.join(process.cwd(), 'db/migrations', name), 'utf8')
+  .replaceAll('--> statement-breakpoint', '');
 
 beforeAll(() => {
   if (!testDatabaseUrl) return;
@@ -99,5 +106,352 @@ it.skipIf(!testDatabaseUrl)('seeds credential accounts that allow both demo user
     }
   } finally {
     await connection.end();
+  }
+});
+
+// Roles and Members (shares the seed above; separate files would race on the same test database).
+const connection = testDatabaseUrl ? postgres(testDatabaseUrl, { max: 1 }) : null;
+afterAll(async () => { await connection?.end(); });
+
+async function userId(email: string) {
+  const [row] = await connection!<{ id: string }[]>`SELECT id FROM "user" WHERE email = ${email}`;
+  return row!.id;
+}
+
+it.skipIf(!testDatabaseUrl)('seeds each Demo user as the Owner of their own Workspace', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const a = await userId(emailA!);
+  const b = await userId(emailB!);
+
+  await expect(queries.ownedWorkspace(a, 'workspace-a')).resolves.toEqual({ id: 'workspace-a', name: 'Northstar Studio' });
+  await expect(queries.ownedWorkspace(b, 'workspace-b')).resolves.toEqual({ id: 'workspace-b', name: 'Harbor Analytics' });
+  await expect(queries.ownedWorkspace(a, 'workspace-b')).resolves.toBeNull();
+  await expect(queries.ownedWorkspace(b, 'workspace-a')).resolves.toBeNull();
+});
+
+it.skipIf(!testDatabaseUrl)('makes a Membership a plain Member by default and not an Owner', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const memberId = 'members-test-default-user';
+  try {
+    await connection!`INSERT INTO "user" (id, name, email) VALUES (${memberId}, 'Plain Member', 'plain-member@example.test')`;
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id) VALUES ('members-test-default-membership', ${memberId}, 'workspace-a')`;
+
+    await expect(queries.ownedWorkspace(memberId, 'workspace-a')).resolves.toBeNull();
+    await expect(queries.authorizedWorkspace(memberId, 'workspace-a')).resolves.toMatchObject({ id: 'workspace-a', role: 'member' });
+    await expect(connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES ('members-test-bad-role', ${memberId}, 'workspace-b', 'admin')`).rejects.toThrow();
+  } finally {
+    await connection!`DELETE FROM "user" WHERE id = ${memberId}`;
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('lists only the Members of the requested Workspace with their roles', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const memberId = 'members-test-list-user';
+  try {
+    await connection!`INSERT INTO "user" (id, name, email) VALUES (${memberId}, 'Listed Member', 'listed-member@example.test')`;
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id) VALUES ('members-test-list-membership', ${memberId}, 'workspace-a')`;
+
+    const inA = await queries.listMembers('workspace-a');
+    expect(inA).toEqual([
+      { userId: await userId(emailA!), name: 'Demo User A', email: emailA, role: 'owner' },
+      { userId: memberId, name: 'Listed Member', email: 'listed-member@example.test', role: 'member' },
+    ]);
+
+    const inB = await queries.listMembers('workspace-b');
+    expect(inB.map(member => member.email)).toEqual([emailB]);
+    await expect(queries.listMembers('no-such-workspace')).resolves.toEqual([]);
+  } finally {
+    await connection!`DELETE FROM "user" WHERE id = ${memberId}`;
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('keeps existing Memberships valid as Members when the roles migration runs', async () => {
+  const schemaName = 'roles_migration_test';
+  try {
+    await connection!.unsafe(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE; CREATE SCHEMA ${schemaName}`);
+    await connection!.unsafe(`SET search_path TO ${schemaName}`);
+    await connection!.unsafe(migration('0001_init.sql'));
+    await connection!.unsafe(migration('0002_usage_counters.sql'));
+    await connection!.unsafe(`
+      INSERT INTO "user" (id, name, email) VALUES ('legacy-user', 'Legacy', 'legacy@example.test');
+      INSERT INTO workspaces (id, name, assistant_instructions) VALUES ('legacy-ws', 'Legacy', 'x');
+      INSERT INTO memberships (id, user_id, workspace_id) VALUES ('legacy-membership', 'legacy-user', 'legacy-ws');
+    `);
+
+    await connection!.unsafe(migration('0003_membership_roles.sql'));
+
+    const rows = await connection!.unsafe(`SELECT user_id, workspace_id, role FROM memberships`);
+    expect(rows).toEqual([{ user_id: 'legacy-user', workspace_id: 'legacy-ws', role: 'member' }]);
+  } finally {
+    await connection!.unsafe('SET search_path TO public');
+    await connection!.unsafe(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`);
+  }
+});
+
+// Invitations (same seed; see note above).
+const futureDays = (days: number) => new Date(Date.now() + days * 86_400_000);
+
+async function cleanInvitations() {
+  await connection!`DELETE FROM invitations WHERE created_by IN (SELECT id FROM "user" WHERE email IN (${emailA!}, ${emailB!}))`;
+}
+
+it.skipIf(!testDatabaseUrl)('stores an Invitation with only the token hash and lists it as pending for its own Workspace only', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    const token = generateInvitationToken();
+    const created = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken(token), expiresAt: futureDays(7) });
+
+    const rows = await connection!`SELECT * FROM invitations WHERE id = ${created.id}`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ workspace_id: 'workspace-a', created_by: owner, status: 'pending', token_hash: hashInvitationToken(token) });
+    expect(JSON.stringify(rows[0])).not.toContain(token);
+
+    const pendingA = await store.listPending('workspace-a', new Date());
+    expect(pendingA.map(i => i.id)).toEqual([created.id]);
+    expect(pendingA[0]).not.toHaveProperty('tokenHash');
+    await expect(store.listPending('workspace-b', new Date())).resolves.toEqual([]);
+  } finally {
+    await cleanInvitations();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('hides expired Invitations from the pending list and refuses to accept them', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('expired-one'), expiresAt: futureDays(-1) });
+    const live = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('live-one'), expiresAt: futureDays(3) });
+
+    expect((await store.listPending('workspace-a', new Date())).map(i => i.id)).toEqual([live.id]);
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('expired-one'), extraAcceptEmails[0]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[0]!}`).resolves.toHaveLength(0);
+  } finally {
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('revokes a pending Invitation only within its own Workspace, and a revoked one can never be accepted', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    const created = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('to-revoke'), expiresAt: futureDays(7) });
+
+    await expect(store.revoke('workspace-b', created.id, new Date())).resolves.toBe(false);
+    expect(await store.listPending('workspace-a', new Date())).toHaveLength(1);
+
+    await expect(store.revoke('workspace-a', created.id, new Date())).resolves.toBe(true);
+    await expect(store.revoke('workspace-a', created.id, new Date())).resolves.toBe(false);
+    expect(await store.listPending('workspace-a', new Date())).toEqual([]);
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('to-revoke'), extraAcceptEmails[0]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[0]!}`).resolves.toHaveLength(0);
+  } finally {
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('refuses an unknown token and creates nothing', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  try {
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('unknown-token'), extraAcceptEmails[0]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[0]!}`).resolves.toHaveLength(0);
+  } finally {
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('refuses an already used Invitation', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('used-once'), expiresAt: futureDays(7) });
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('used-once'), extraAcceptEmails[0]!))).resolves.toMatchObject({ kind: 'accepted' });
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('used-once'), extraAcceptEmails[1]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[1]!}`).resolves.toHaveLength(0);
+  } finally {
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('lets an Invitation be used once even under simultaneous attempts', async () => {
+  const pool = postgres(testDatabaseUrl!, { max: 5 }); // real parallel connections
+  const store = createInvitationStore(drizzle(pool, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('single-use'), expiresAt: futureDays(7) });
+
+    const results = await Promise.all(extraAcceptEmails.map(email => store.acceptWithAccount(acceptInput(hashInvitationToken('single-use'), email))));
+    expect(results.filter(result => result.kind === 'accepted')).toHaveLength(1);
+    expect(results.filter(result => result.kind === 'invalid-link')).toHaveLength(extraAcceptEmails.length - 1);
+    await expect(store.listPending('workspace-a', new Date())).resolves.toEqual([]);
+  } finally {
+    await pool.end();
+    await cleanAccept();
+  }
+});
+
+// Role changes, removal and the last-Owner guard (same seeded database, same file).
+async function withExtraUsers(ids: string[], workspaceId: string, roles: Array<'owner' | 'member'>, run: () => Promise<void>) {
+  try {
+    for (const [index, id] of ids.entries()) {
+      await connection!`INSERT INTO "user" (id, name, email) VALUES (${id}, ${id}, ${`${id}@example.test`})`;
+      await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES (${`m-${id}`}, ${id}, ${workspaceId}, ${roles[index]!})`;
+    }
+    await run();
+  } finally {
+    for (const id of ids) await connection!`DELETE FROM "user" WHERE id = ${id}`;
+  }
+}
+
+it.skipIf(!testDatabaseUrl)('changes a Member role and removes a Membership only in the given Workspace', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  await withExtraUsers(['role-test-x'], 'workspace-a', ['member'], async () => {
+    await expect(queries.changeRole('workspace-a', 'role-test-x', 'owner')).resolves.toBe('ok');
+    await expect(queries.ownedWorkspace('role-test-x', 'workspace-a')).resolves.not.toBeNull();
+    await expect(queries.changeRole('workspace-a', 'role-test-x', 'member')).resolves.toBe('ok');
+    await expect(queries.ownedWorkspace('role-test-x', 'workspace-a')).resolves.toBeNull();
+
+    // Wrong Workspace: no Membership there, nothing changes.
+    await expect(queries.changeRole('workspace-b', 'role-test-x', 'owner')).resolves.toBe('not-found');
+    await expect(queries.removeMember('workspace-b', 'role-test-x')).resolves.toBe('not-found');
+    await expect(queries.authorizedWorkspace('role-test-x', 'workspace-a')).resolves.not.toBeNull();
+
+    await expect(queries.removeMember('workspace-a', 'role-test-x')).resolves.toBe('ok');
+    await expect(queries.authorizedWorkspace('role-test-x', 'workspace-a')).resolves.toBeNull();
+    await expect(queries.listMembers('workspace-a')).resolves.toHaveLength(1);
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('removing a Membership leaves the User their other Workspaces', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  await withExtraUsers(['multi-test-x'], 'workspace-a', ['member'], async () => {
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id) VALUES ('m-multi-test-x-b', 'multi-test-x', 'workspace-b')`;
+    await expect(queries.removeMember('workspace-a', 'multi-test-x')).resolves.toBe('ok');
+    await expect(queries.listWorkspaces('multi-test-x')).resolves.toEqual([{ id: 'workspace-b', name: 'Harbor Analytics' }]);
+    await expect(queries.removeMember('workspace-b', 'multi-test-x')).resolves.toBe('ok');
+    await expect(queries.listWorkspaces('multi-test-x')).resolves.toEqual([]);
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('never removes, demotes or lets the last Owner leave', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const owner = await userId(emailB!);
+  await expect(queries.changeRole('workspace-b', owner, 'member')).resolves.toBe('last-owner');
+  await expect(queries.removeMember('workspace-b', owner)).resolves.toBe('last-owner');
+  await expect(queries.ownedWorkspace(owner, 'workspace-b')).resolves.not.toBeNull();
+
+  // A second Owner makes the first one free to go.
+  await withExtraUsers(['guard-test-x'], 'workspace-b', ['owner'], async () => {
+    await expect(queries.changeRole('workspace-b', owner, 'member')).resolves.toBe('ok');
+    await expect(queries.changeRole('workspace-b', 'guard-test-x', 'member')).resolves.toBe('last-owner');
+    await expect(queries.changeRole('workspace-b', owner, 'owner')).resolves.toBe('ok');
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('keeps at least one Owner under simultaneous demotions, removals and leaves', async () => {
+  const pool = postgres(testDatabaseUrl!, { max: 10 });
+  const queries = createWorkspaceQueries(drizzle(pool, { schema }));
+  const ids = ['race-test-1', 'race-test-2', 'race-test-3', 'race-test-4'];
+  const demoA = await userId(emailA!);
+  try {
+    // Demo user A plus four extra Owners in workspace-a, all trying to stop being Owners at once.
+    await withExtraUsers(ids, 'workspace-a', ['owner', 'owner', 'owner', 'owner'], async () => {
+      const everyone = [demoA, ...ids];
+      for (let round = 0; round < 5; round++) {
+        const results = await Promise.all(everyone.map((id, index) =>
+          index % 2 === 0 ? queries.changeRole('workspace-a', id, 'member') : queries.removeMember('workspace-a', id)));
+        expect(results.filter(result => result === 'ok')).toHaveLength(everyone.length - 1);
+        expect(results.filter(result => result === 'last-owner')).toHaveLength(1);
+        const [{ owners }] = await connection!<{ owners: number }[]>`SELECT count(*)::int AS owners FROM memberships WHERE workspace_id = 'workspace-a' AND role = 'owner'`;
+        expect(owners).toBe(1);
+
+        // Restore everyone as Owner for the next round.
+        for (const id of everyone) {
+          await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES (${`m-${id}`}, ${id}, 'workspace-a', 'owner')
+            ON CONFLICT (user_id, workspace_id) DO UPDATE SET role = 'owner'`;
+        }
+      }
+    });
+  } finally {
+    await pool.end();
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES ('restore-a', ${demoA}, 'workspace-a', 'owner')
+      ON CONFLICT (user_id, workspace_id) DO UPDATE SET role = 'owner'`;
+  }
+});
+
+// Accepting an Invitation creates the account (same file: the seeded test database is shared).
+const acceptEmails = ['accept-one@example.test', 'accept-two@example.test', 'accept-race-a@example.test', 'accept-race-b@example.test'];
+const extraAcceptEmails = Array.from({ length: 5 }, (_, i) => `accept-extra-${i}@example.test`);
+const cleanAccept = async () => {
+  await connection!`DELETE FROM "user" WHERE email IN ${connection!([...acceptEmails, ...extraAcceptEmails])}`;
+  await cleanInvitations();
+};
+const acceptInput = (tokenHash: string, email: string) => ({ tokenHash, now: new Date(), userId: `acc-${email}`, name: 'Newcomer', email, passwordHash: 'x' });
+
+it.skipIf(!testDatabaseUrl)('creates the account, the Member Membership and consumes the Invitation in one step, and the new User can sign in', async () => {
+  const owner = await userId(emailA!);
+  const pool = postgres(testDatabaseUrl!, { max: 2 });
+  try {
+    const store = createInvitationStore(drizzle(pool, { schema }));
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-ok'), expiresAt: futureDays(7) });
+    const { hashPassword } = await import('better-auth/crypto');
+
+    const result = await store.acceptWithAccount({ ...acceptInput(hashInvitationToken('accept-ok'), acceptEmails[0]!), passwordHash: await hashPassword('brand-new-password') });
+    expect(result).toEqual({ kind: 'accepted', workspaceId: 'workspace-a' });
+
+    const queries = createWorkspaceQueries(drizzle(pool, { schema }));
+    await expect(queries.authorizedWorkspace(`acc-${acceptEmails[0]}`, 'workspace-a')).resolves.toMatchObject({ id: 'workspace-a' });
+    await expect(queries.ownedWorkspace(`acc-${acceptEmails[0]}`, 'workspace-a')).resolves.toBeNull();
+    await expect(store.listPending('workspace-a', new Date())).resolves.toEqual([]);
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('accept-ok'), acceptEmails[1]!))).resolves.toEqual({ kind: 'invalid-link' });
+    await expect(store.findPending(hashInvitationToken('accept-ok'), new Date())).resolves.toBeNull();
+
+    const auth = betterAuth({
+      database: drizzleAdapter(drizzle(pool, { schema }), { provider: 'pg' }),
+      emailAndPassword: { enabled: true, disableSignUp: true },
+      baseURL: 'http://localhost:3000',
+      secret: 'integration-test-secret-that-is-not-for-production',
+    });
+    const signedIn = await auth.api.signInEmail({ body: { email: acceptEmails[0]!, password: 'brand-new-password' } });
+    expect(signedIn.user.id).toBe(`acc-${acceptEmails[0]}`);
+  } finally {
+    await pool.end();
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('fails for an email that already has an account without consuming the Invitation', async () => {
+  const owner = await userId(emailA!);
+  const pool = postgres(testDatabaseUrl!, { max: 2 });
+  try {
+    const store = createInvitationStore(drizzle(pool, { schema }));
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-dup'), expiresAt: futureDays(7) });
+    await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('accept-dup'), emailB!))).resolves.toEqual({ kind: 'email-unavailable' });
+    await expect(store.findPending(hashInvitationToken('accept-dup'), new Date())).resolves.toMatchObject({ workspaceId: 'workspace-a' });
+    const [{ users }] = await connection!<{ users: number }[]>`SELECT count(*)::int AS users FROM "user" WHERE id = ${`acc-${emailB}`}`;
+    expect(users).toBe(0);
+  } finally {
+    await pool.end();
+    await cleanAccept();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('lets only one of several simultaneous acceptances win and leaves one account', async () => {
+  const owner = await userId(emailA!);
+  const pool = postgres(testDatabaseUrl!, { max: 6 });
+  try {
+    const store = createInvitationStore(drizzle(pool, { schema }));
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-race'), expiresAt: futureDays(7) });
+    const emails = [acceptEmails[2]!, acceptEmails[3]!, acceptEmails[2]!, acceptEmails[3]!];
+    const results = await Promise.all(emails.map(email => store.acceptWithAccount(acceptInput(hashInvitationToken('accept-race'), email))));
+    expect(results.filter(r => r.kind === 'accepted')).toHaveLength(1);
+    const raceEmails = [acceptEmails[2]!, acceptEmails[3]!];
+    const [{ users }] = await connection!<{ users: number }[]>`SELECT count(*)::int AS users FROM "user" WHERE email IN ${connection!(raceEmails)}`;
+    expect(users).toBe(1);
+    const [{ members }] = await connection!<{ members: number }[]>`SELECT count(*)::int AS members FROM memberships WHERE user_id IN (SELECT id FROM "user" WHERE email IN ${connection!(raceEmails)})`;
+    expect(members).toBe(1);
+  } finally {
+    await pool.end();
+    await cleanAccept();
   }
 });

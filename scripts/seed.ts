@@ -57,8 +57,8 @@ async function main(): Promise<void> {
           SET name = excluded.name, assistant_instructions = excluded.assistant_instructions
         `;
         await transaction`
-          INSERT INTO memberships (id, user_id, workspace_id)
-          VALUES (${`${user.id}-membership`}, ${user.id}, ${demo.workspaceId})
+          INSERT INTO memberships (id, user_id, workspace_id, role)
+          VALUES (${`${user.id}-membership`}, ${user.id}, ${demo.workspaceId}, 'owner')
         `;
         const [existingCredential] = await transaction<{ id: string }[]>`
           UPDATE account SET account_id = ${user.id}, password = ${hashedPassword}

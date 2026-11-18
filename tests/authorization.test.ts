@@ -1,8 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getSession, query, requestHeaders } = vi.hoisted(() => ({
+const { getSession, query, owned, requestHeaders } = vi.hoisted(() => ({
   getSession: vi.fn(),
   query: vi.fn(),
+  owned: vi.fn(),
   requestHeaders: vi.fn(),
 }));
 
@@ -10,14 +11,15 @@ vi.mock('next/headers', () => ({ headers: requestHeaders }));
 vi.mock('../src/lib/auth', () => ({
   auth: { api: { getSession } },
 }));
-vi.mock('../src/lib/workspaces', () => ({ authorizedWorkspace: query }));
+vi.mock('../src/lib/workspaces', () => ({ authorizedWorkspace: query, ownedWorkspace: owned }));
 
-import { authorizeWorkspace } from '../src/lib/authorization';
+import { authorizeWorkspace, authorizeWorkspaceForUser, authorizeWorkspaceOwner } from '../src/lib/authorization';
 
 describe('workspace authorization', () => {
   beforeEach(() => {
     getSession.mockReset();
     query.mockReset();
+    owned.mockReset();
     requestHeaders.mockReset().mockResolvedValue(new Headers());
   });
 
@@ -46,5 +48,34 @@ describe('workspace authorization', () => {
 
     await expect(authorizeWorkspace('workspace-b')).resolves.toEqual({ kind: 'forbidden' });
     expect(query).toHaveBeenCalledWith('user-a', 'workspace-b');
+  });
+});
+
+describe('chat authorization after a Membership is removed', () => {
+  beforeEach(() => query.mockReset());
+
+  it('is Forbidden on the very next check, because access is read from the stored Membership each time', async () => {
+    query.mockResolvedValueOnce({ id: 'workspace-a', name: 'A', assistantInstructions: 'A only', role: 'member' });
+    await expect(authorizeWorkspaceForUser('user-a', 'workspace-a')).resolves.toMatchObject({ kind: 'authorized' });
+
+    query.mockResolvedValueOnce(null); // the Membership was removed in between
+    await expect(authorizeWorkspaceForUser('user-a', 'workspace-a')).resolves.toEqual({ kind: 'forbidden' });
+    expect(query).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('workspace owner authorization wiring', () => {
+  beforeEach(() => {
+    getSession.mockReset();
+    owned.mockReset();
+    requestHeaders.mockReset().mockResolvedValue(new Headers());
+  });
+
+  it('checks the Owner role for the Session user against the stored Membership', async () => {
+    getSession.mockResolvedValue({ user: { id: 'user-a' } });
+    owned.mockResolvedValue({ id: 'workspace-a', name: 'A' });
+
+    await expect(authorizeWorkspaceOwner('workspace-a')).resolves.toEqual({ kind: 'owner', userId: 'user-a', workspace: { id: 'workspace-a', name: 'A' } });
+    expect(owned).toHaveBeenCalledWith('user-a', 'workspace-a');
   });
 });
