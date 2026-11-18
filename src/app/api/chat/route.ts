@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { auth } from '@/lib/auth';
 import { authorizeWorkspaceForUser, type WorkspaceAccess } from '@/lib/authorization';
 import { streamAssistant } from '@/lib/provider';
+import { usageLimiter, type UsageLimiter } from '@/lib/usage-limiter';
 
 const messagePartsSchema = z.array(z.object({ type: z.literal('text'), text: z.string().max(4000) })).max(20)
   .refine(parts => parts.reduce((size, part) => size + part.text.length, 0) <= 4000);
@@ -20,6 +21,7 @@ const MAX_BODY_BYTES = 64_000;
 type ChatDependencies = {
   getSession: (request: Request) => Promise<{ user: { id: string } } | null>;
   authorize: (userId: string, workspaceId: string) => Promise<WorkspaceAccess>;
+  limiter: UsageLimiter;
   stream: (input: { instructions: string; messages: UIMessage[] }) => Promise<Response> | Response;
 };
 
@@ -81,6 +83,19 @@ export function createChatPost(dependencies: ChatDependencies) {
     if (access.kind === 'forbidden') return Response.json({ error: 'Forbidden' }, { status: 403 });
 
     try {
+      const decision = await dependencies.limiter.check({ userId: session.user.id, workspaceId: access.workspace.id });
+      if (!decision.allowed) {
+        const { limit, retryAfterSeconds } = decision;
+        return Response.json(
+          { error: `Usage limit reached. Try again in ${retryAfterSeconds} seconds.`, limit, retryAfterSeconds },
+          { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
+        );
+      }
+    } catch {
+      return Response.json({ error: 'Assistant unavailable' }, { status: 503 });
+    }
+
+    try {
       return await dependencies.stream({
         instructions: access.workspace.assistantInstructions,
         messages: parsed.data.messages as UIMessage[],
@@ -94,5 +109,6 @@ export function createChatPost(dependencies: ChatDependencies) {
 export const POST = createChatPost({
   getSession: async request => auth?.api.getSession({ headers: request.headers }) ?? null,
   authorize: authorizeWorkspaceForUser,
+  limiter: usageLimiter,
   stream: streamAssistant,
 });

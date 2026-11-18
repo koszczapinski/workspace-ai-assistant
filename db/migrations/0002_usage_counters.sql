@@ -1,0 +1,1 @@
+CREATE TABLE usage_counters (kind text NOT NULL,subject_id text NOT NULL,window_start timestamptz NOT NULL,count integer NOT NULL DEFAULT 0,CONSTRAINT usage_counters_pkey PRIMARY KEY (kind,subject_id,window_start));
