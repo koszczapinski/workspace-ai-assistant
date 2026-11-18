@@ -1,12 +1,14 @@
 import { headers } from 'next/headers';
 import { auth } from './auth';
-import { authorizedWorkspace } from './workspaces';
+import { createOwnerAuthorization } from './owner-authorization';
+import { authorizedWorkspace, ownedWorkspace } from './workspaces';
 
 export type WorkspaceAccess =
   | { kind: 'unavailable' }
   | { kind: 'unauthenticated' }
   | { kind: 'forbidden' }
-  | { kind: 'authorized'; workspace: NonNullable<Awaited<ReturnType<typeof authorizedWorkspace>>> };
+  // `role` is optional so callers that only need access (the chat endpoint) can ignore it.
+  | { kind: 'authorized'; workspace: Omit<NonNullable<Awaited<ReturnType<typeof authorizedWorkspace>>>, 'role'> & { role?: 'owner' | 'member' } };
 
 export async function authorizeWorkspaceForUser(userId: string, workspaceId: string): Promise<WorkspaceAccess> {
   const workspace = await authorizedWorkspace(userId, workspaceId);
@@ -24,3 +26,9 @@ export async function authorizeWorkspace(workspaceId: string): Promise<Workspace
 
   return authorizeWorkspaceForUser(session.user.id, workspaceId);
 }
+
+/** Resolves identity from the server session and enforces the Owner role in the Workspace. */
+export const authorizeWorkspaceOwner = createOwnerAuthorization({
+  getSession: async () => (auth ? auth.api.getSession({ headers: await headers() }) : null),
+  findOwnedWorkspace: ownedWorkspace,
+});

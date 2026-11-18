@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Check, CircleAlert, LoaderCircle, Send, Sparkles, Square } from 'lucide-react';
+import { ArrowLeft, Check, CircleAlert, LoaderCircle, Send, Sparkles, Square, Users } from 'lucide-react';
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type ChatTransport, type UIMessage } from 'ai';
 import { useEffect, useRef, useState } from 'react';
@@ -19,13 +19,13 @@ import {
   TraceTitle,
 } from '@/components/ui/trace';
 
-type ChatProps = { id: string; name: string; transport?: ChatTransport<UIMessage> };
+type ChatProps = { id: string; name: string; isOwner?: boolean; transport?: ChatTransport<UIMessage> };
 
 export default function Chat(props: ChatProps) {
   return <ChatSession key={props.id} {...props} />;
 }
 
-function ChatSession({ id, name, transport }: ChatProps) {
+function ChatSession({ id, name, isOwner, transport }: ChatProps) {
   const [input, setInput] = useState('');
   const [stoppedMessageId, setStoppedMessageId] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
@@ -70,9 +70,17 @@ function ChatSession({ id, name, transport }: ChatProps) {
             <ArrowLeft aria-hidden="true" className="size-4" />
             <span>Workspaces</span>
         </Link>
+        <div className="flex min-w-0 items-center gap-3">
+        {isOwner && (
+          <Link href={`/w/${id}/members`} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
+            <Users aria-hidden="true" className="size-4" />
+            <span>Members</span>
+          </Link>
+        )}
         <div className="min-w-0 text-right">
           <p className="truncate text-[0.65rem] font-medium uppercase tracking-[0.2em] text-muted-foreground">Private workspace</p>
           <h1 className="gradient-heading truncate text-lg font-semibold tracking-tight sm:text-xl">{name}</h1>
+        </div>
         </div>
       </header>
 

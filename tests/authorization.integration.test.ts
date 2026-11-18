@@ -1,5 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
-import { beforeAll, expect, it } from 'vitest';
+import path from 'node:path';
+import { afterAll, beforeAll, expect, it } from 'vitest';
 import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import postgres from 'postgres';
@@ -12,6 +14,9 @@ const emailA = process.env.DEMO_USER_A_EMAIL;
 const passwordA = process.env.DEMO_USER_A_PASSWORD;
 const emailB = process.env.DEMO_USER_B_EMAIL;
 const passwordB = process.env.DEMO_USER_B_PASSWORD;
+
+const migration = (name: string) => readFileSync(path.join(process.cwd(), 'db/migrations', name), 'utf8')
+  .replaceAll('--> statement-breakpoint', '');
 
 beforeAll(() => {
   if (!testDatabaseUrl) return;
@@ -99,5 +104,84 @@ it.skipIf(!testDatabaseUrl)('seeds credential accounts that allow both demo user
     }
   } finally {
     await connection.end();
+  }
+});
+
+// Roles and Members (shares the seed above; separate files would race on the same test database).
+const connection = testDatabaseUrl ? postgres(testDatabaseUrl, { max: 1 }) : null;
+afterAll(async () => { await connection?.end(); });
+
+async function userId(email: string) {
+  const [row] = await connection!<{ id: string }[]>`SELECT id FROM "user" WHERE email = ${email}`;
+  return row!.id;
+}
+
+it.skipIf(!testDatabaseUrl)('seeds each Demo user as the Owner of their own Workspace', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const a = await userId(emailA!);
+  const b = await userId(emailB!);
+
+  await expect(queries.ownedWorkspace(a, 'workspace-a')).resolves.toEqual({ id: 'workspace-a', name: 'Northstar Studio' });
+  await expect(queries.ownedWorkspace(b, 'workspace-b')).resolves.toEqual({ id: 'workspace-b', name: 'Harbor Analytics' });
+  await expect(queries.ownedWorkspace(a, 'workspace-b')).resolves.toBeNull();
+  await expect(queries.ownedWorkspace(b, 'workspace-a')).resolves.toBeNull();
+});
+
+it.skipIf(!testDatabaseUrl)('makes a Membership a plain Member by default and not an Owner', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const memberId = 'members-test-default-user';
+  try {
+    await connection!`INSERT INTO "user" (id, name, email) VALUES (${memberId}, 'Plain Member', 'plain-member@example.test')`;
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id) VALUES ('members-test-default-membership', ${memberId}, 'workspace-a')`;
+
+    await expect(queries.ownedWorkspace(memberId, 'workspace-a')).resolves.toBeNull();
+    await expect(queries.authorizedWorkspace(memberId, 'workspace-a')).resolves.toMatchObject({ id: 'workspace-a', role: 'member' });
+    await expect(connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES ('members-test-bad-role', ${memberId}, 'workspace-b', 'admin')`).rejects.toThrow();
+  } finally {
+    await connection!`DELETE FROM "user" WHERE id = ${memberId}`;
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('lists only the Members of the requested Workspace with their roles', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const memberId = 'members-test-list-user';
+  try {
+    await connection!`INSERT INTO "user" (id, name, email) VALUES (${memberId}, 'Listed Member', 'listed-member@example.test')`;
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id) VALUES ('members-test-list-membership', ${memberId}, 'workspace-a')`;
+
+    const inA = await queries.listMembers('workspace-a');
+    expect(inA).toEqual([
+      { userId: await userId(emailA!), name: 'Demo User A', email: emailA, role: 'owner' },
+      { userId: memberId, name: 'Listed Member', email: 'listed-member@example.test', role: 'member' },
+    ]);
+
+    const inB = await queries.listMembers('workspace-b');
+    expect(inB.map(member => member.email)).toEqual([emailB]);
+    await expect(queries.listMembers('no-such-workspace')).resolves.toEqual([]);
+  } finally {
+    await connection!`DELETE FROM "user" WHERE id = ${memberId}`;
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('keeps existing Memberships valid as Members when the roles migration runs', async () => {
+  const schemaName = 'roles_migration_test';
+  try {
+    await connection!.unsafe(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE; CREATE SCHEMA ${schemaName}`);
+    await connection!.unsafe(`SET search_path TO ${schemaName}`);
+    await connection!.unsafe(migration('0001_init.sql'));
+    await connection!.unsafe(migration('0002_usage_counters.sql'));
+    await connection!.unsafe(`
+      INSERT INTO "user" (id, name, email) VALUES ('legacy-user', 'Legacy', 'legacy@example.test');
+      INSERT INTO workspaces (id, name, assistant_instructions) VALUES ('legacy-ws', 'Legacy', 'x');
+      INSERT INTO memberships (id, user_id, workspace_id) VALUES ('legacy-membership', 'legacy-user', 'legacy-ws');
+    `);
+
+    await connection!.unsafe(migration('0003_membership_roles.sql'));
+
+    const rows = await connection!.unsafe(`SELECT user_id, workspace_id, role FROM memberships`);
+    expect(rows).toEqual([{ user_id: 'legacy-user', workspace_id: 'legacy-ws', role: 'member' }]);
+  } finally {
+    await connection!.unsafe('SET search_path TO public');
+    await connection!.unsafe(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`);
   }
 });
