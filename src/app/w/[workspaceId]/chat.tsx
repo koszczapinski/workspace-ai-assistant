@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BrandLogo } from '@/components/brand-logo';
+import { parseUsageLimit, usageLimitMessage } from '@/lib/usage-limit-message';
 import {
   Trace,
   TraceCollapsible,
@@ -52,8 +53,9 @@ function ChatSession({ id, name, transport }: ChatProps) {
   const latestMessage = messages.at(-1);
   const currentResponse = latestMessage?.role === 'assistant' ? latestMessage : undefined;
   const hasResponseText = currentResponse?.parts.some(part => part.type === 'text' && part.text.length > 0) ?? false;
+  const usageLimit = error ? parseUsageLimit(error.message) : null;
   const activityTitle = error
-    ? `Error: ${error.message || 'Please try again.'}`
+    ? usageLimit ? usageLimitMessage(usageLimit, name) : `Error: ${error.message || 'Please try again.'}`
     : stopped
       ? 'Stopped'
       : active

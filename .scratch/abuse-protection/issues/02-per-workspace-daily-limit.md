@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (Per-User Usage limit, server end to end).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The default is 200 messages per UTC day per Workspace, overridable through server-side environment variables added to `.env.example`.
 - [ ] Over the Workspace limit, the endpoint returns `429` with `Retry-After` (seconds until the next UTC day) and the "which limit" field set to the Workspace's limit, using the contract from ticket 01.

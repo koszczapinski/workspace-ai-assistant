@@ -39,6 +39,32 @@ Unit and route tests use controlled streams and fake adapters, so they require n
 
 CI runs these checks on pull requests and pushes to `main`. Its PostgreSQL 16 service uses a fresh `workspace_ai_test` database. Demo passwords and the Better Auth secret in CI are synthetic job-local values. `CHAT_FAKE_PROVIDER=true` selects the deterministic fake stream only outside production; `CHAT_FAKE_PROVIDER_DELAY_MS` controls its pause before each response chunk (default `120` ms). CI supplies no AI key or production credentials.
 
+## Usage limits
+
+The chat endpoint enforces two server-side Usage limits so one User or Workspace cannot run up unbounded provider cost:
+
+| Limit | Default | Window | Environment variable |
+|---|---|---|---|
+| Per User | 10 requests | per minute (fixed window) | `USAGE_LIMIT_USER_PER_MINUTE` |
+| Per Workspace | 200 requests | per UTC calendar day | `USAGE_LIMIT_WORKSPACE_PER_DAY` |
+
+Both variables are optional and are listed in `.env.example`. A value that is not a positive integer falls back to the default.
+
+- The check runs after authentication, request validation, and Workspace authorization, and before the AI provider is called. `401`, `403`, and invalid requests behave as before and consume nothing.
+- A request over either limit is answered with `429`, a JSON error body naming which limit was reached (User or Workspace), and a `Retry-After` header in seconds. It never reaches the provider and consumes neither counter. Counter values are not exposed.
+- The chat shows a distinct limit message with the wait time; the conversation and draft are kept and Retry stays available.
+- A retry after a provider failure counts like any other request.
+- Counters live in PostgreSQL (table `usage_counters`, no message content), so they are shared by all server instances. Counters of expired windows are purged during normal checks.
+- If the counter store is unreachable, the endpoint responds `503` rather than calling the provider (fail closed).
+
+### Public-demo precondition
+
+The demo may be exposed on a public URL only with these Usage limits configured (the defaults satisfy this; do not disable them or set them very high) and the database reachable. Without them, keep the demo local or private.
+
+### What this is and is not
+
+This is basic protection, not production-grade abuse protection. It does not cover: public signup or bot/account-creation defense, per-IP or per-session rate limiting, CAPTCHA, limits on login attempts, token- or cost-based budgets (it counts requests, not tokens), alerting or monitoring, or a global spend cap across all Workspaces. Each limit is a fixed window, so a User can burst up to twice the per-minute limit across a window boundary.
+
 ## Tenant isolation and streaming
 
 The server reads identity from the Better Auth session and checks `(userId, workspaceId)` membership before reading workspace instructions or invoking the provider. The chat endpoint accepts neither a user ID nor an authoritative system prompt from clients. Tests verify that anonymous and non-member requests do not reach the provider; browser and UI tests cover incremental streaming and workspace state isolation.
@@ -76,13 +102,15 @@ flowchart LR
 4. In a separate private browser session, sign in as User B and verify only Harbor Analytics appears.
 5. Try opening `/w/workspace-a` in User B's session and confirm access is denied.
 
+The script sends two messages from one User, well within the default Usage limits, so it never reaches them.
+
 The committed [chat screenshot](output/playwright/critical-journey.png) shows the actual chat component with a deterministic streamed test response. The automated login-and-stream journey saves its own screenshot at the same path when run against a migrated, seeded test database. CI also uploads Playwright results as a workflow artifact.
 
 ## Implemented features and limitations
 
-Implemented: seeded password sign-in, membership-filtered workspace list, server-side page and chat authorization, workspace-specific instructions, streamed chat, stop/retry controls, in-memory conversation state, fake-provider tests, and a Playwright login-and-stream journey.
+Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, membership-filtered workspace list, server-side page and chat authorization, workspace-specific instructions, streamed chat, stop/retry controls, in-memory conversation state, fake-provider tests, and a Playwright login-and-stream journey.
 
-Limitations: no persisted chat, public signup, invitations, membership administration, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection. Keep the demo local or private until cost limits and abuse controls are added. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
+Limitations: no persisted chat, public signup, invitations, membership administration, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection (only the basic Usage limits above exist). The demo may go public only with the Usage limits configured. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
 
 Agent-assisted implementation followed the `implement-spec` and `tdd` skills. The Playwright skill was consulted for browser-artifact conventions; the required automated test is implemented with the repository's installed `@playwright/test` convention. No claim is made that other skills or agents were used.
 

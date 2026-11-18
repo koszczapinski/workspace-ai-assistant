@@ -25,6 +25,10 @@ _Avoid_: Permission, role, access list
 A synthetic User created by the seed, with exactly one Membership and a Workspace whose Assistant instructions differ from the other Demo user's (A↔A, B↔B). Used to verify isolation.
 _Avoid_: Test user, seed user
 
+**Usage limit**:
+A server-enforced cap on chat requests per User per minute (10 by default) and per Workspace per UTC day (200 by default). Both are decided together: a request over either limit is answered with `429`, never reaches the AI provider, and consumes neither counter.
+_Avoid_: quota, throttle
+
 **Unauthenticated**:
 A request with no Session. It is rejected before any Workspace lookup.
 
