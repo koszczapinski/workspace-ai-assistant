@@ -26,7 +26,7 @@ A synthetic User created by the seed, with exactly one Membership and a Workspac
 _Avoid_: Test user, seed user
 
 **Usage limit**:
-A server-enforced cap on chat requests per User per minute and per Workspace per UTC day (200 by default). Both are decided together: a request over either limit is answered with `429`, never reaches the AI provider, and consumes neither counter.
+A server-enforced cap on chat requests per User per minute (10 by default) and per Workspace per UTC day (200 by default). Both are decided together: a request over either limit is answered with `429`, never reaches the AI provider, and consumes neither counter.
 _Avoid_: quota, throttle
 
 **Unauthenticated**:
