@@ -18,9 +18,13 @@ Goal: keep the project a portfolio piece that shows depth. One small, finished i
    - Membership gets a role: **Owner** or **Member**; only Owners manage members and see the admin UI. Seeded Demo users are Owners of their Workspace.
    - Invitations: an Owner creates a single-use, expiring link; the invitee creates an account and joins as a Member. No email delivery, no public signup.
 
+## Later (not excluded, not yet ordered)
+
+RAG and tool use / function calling. They stay out of scope for the current version (`AGENTS.md`), but they are not ruled out of future iterations. Their order and scope get decided in a later grilling round, once the three increments above are done.
+
 ## Not planned
 
-Tools / function calling, RAG and file uploads, model selection, billing.
+Model selection, billing.
 
 ## Glossary changes to land with the features
 
