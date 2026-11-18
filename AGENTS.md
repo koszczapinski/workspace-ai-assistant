@@ -20,7 +20,7 @@ Do not add TanStack Query or a global state library unless there is a demonstrat
 
 Target a complete two-evening MVP. Prefer a narrow, finished implementation over extra features.
 
-Out of scope: RAG, file uploads, vector databases, billing, tools or function calling, persistent conversations, public signup, invitations, admin UI, model selection, and production-grade abuse protection.
+Out of scope: RAG, file uploads, vector databases, billing, tools or function calling, persistent conversations, public signup, Workspace creation and editing, inviting existing Users, email delivery of Invitations, password reset, more than two roles, model selection, and production-grade abuse protection.
 
 Do not persist chat messages in this version. Keep conversation state in browser memory only.
 
