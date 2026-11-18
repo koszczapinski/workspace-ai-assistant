@@ -3,9 +3,10 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { authorizeWorkspaceOwner, listMembers, redirect, notFound } = vi.hoisted(() => ({
+const { authorizeWorkspaceOwner, listMembers, listPending, redirect, notFound } = vi.hoisted(() => ({
   authorizeWorkspaceOwner: vi.fn(),
   listMembers: vi.fn(),
+  listPending: vi.fn(),
   redirect: vi.fn((destination: string): never => { throw new Error(`redirect:${destination}`); }),
   notFound: vi.fn((): never => { throw new Error('not-found'); }),
 }));
@@ -13,6 +14,7 @@ const { authorizeWorkspaceOwner, listMembers, redirect, notFound } = vi.hoisted(
 vi.mock('next/navigation', () => ({ redirect, notFound, useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock('../src/lib/authorization', () => ({ authorizeWorkspaceOwner }));
 vi.mock('../src/lib/workspaces', () => ({ listMembers }));
+vi.mock('../src/lib/invitation-store', () => ({ invitationStore: { listPending } }));
 
 import MembersPage from '../src/app/w/[workspaceId]/members/page';
 import Chat from '../src/app/w/[workspaceId]/chat';
@@ -25,6 +27,8 @@ describe('members screen', () => {
   beforeEach(() => {
     authorizeWorkspaceOwner.mockReset();
     listMembers.mockReset();
+    listPending.mockReset();
+    listPending.mockResolvedValue([]);
     redirect.mockClear();
     notFound.mockClear();
   });
@@ -41,13 +45,26 @@ describe('members screen', () => {
     expect(listMembers).toHaveBeenCalledWith('workspace-a');
     expect(screen.getByRole('heading', { name: 'Members' })).toBeVisible();
     expect(screen.getByText('Northstar Studio')).toBeVisible();
-    const rows = screen.getAllByRole('listitem');
+    const rows = within(screen.getByRole('list', { name: 'Workspace members' })).getAllByRole('listitem');
     expect(rows).toHaveLength(2);
     expect(within(rows[0]!).getByText('Ada Owner')).toBeVisible();
     expect(within(rows[0]!).getByText('Owner')).toBeVisible();
     expect(within(rows[1]!).getByText('bo@example.test')).toBeVisible();
     expect(within(rows[1]!).getByText('Member')).toBeVisible();
     expect(screen.getByRole('link', { name: /Back to Northstar Studio/ })).toHaveAttribute('href', '/w/workspace-a');
+  });
+
+  it('shows an Owner the pending Invitations of the Workspace and a create action', async () => {
+    authorizeWorkspaceOwner.mockResolvedValue({ kind: 'owner', workspace: { id: 'workspace-a', name: 'Northstar Studio' } });
+    listMembers.mockResolvedValue([]);
+    listPending.mockResolvedValue([{ id: 'inv-1', expiresAt: new Date('2030-01-08T10:30:00.000Z') }]);
+
+    render(await MembersPage(params('workspace-a')));
+
+    expect(listPending).toHaveBeenCalledWith('workspace-a', expect.any(Date));
+    expect(screen.getByRole('button', { name: 'Create invitation link' })).toBeVisible();
+    expect(within(screen.getByRole('list', { name: 'Pending invitations' })).getByText('Expires 8 Jan 2030, 10:30 UTC')).toBeVisible();
+    expect(screen.queryByRole('textbox')).toBeNull();
   });
 
   it('gives each row its actions: leave on the Owner themselves, and a last-Owner explanation when they are the only Owner', async () => {
@@ -59,7 +76,7 @@ describe('members screen', () => {
 
     render(await MembersPage(params('workspace-a')));
 
-    const rows = screen.getAllByRole('listitem');
+    const rows = within(screen.getByRole('list', { name: 'Workspace members' })).getAllByRole('listitem');
     expect(within(rows[0]!).getByRole('button', { name: 'Leave workspace' })).toBeDisabled();
     expect(within(rows[0]!).getByText(/last Owner/i)).toBeVisible();
     expect(within(rows[1]!).getByRole('button', { name: 'Make Bo Member an Owner' })).toBeEnabled();
@@ -85,6 +102,7 @@ describe('members screen', () => {
 
     await expect(MembersPage(params('workspace-a'))).rejects.toThrow('not-found');
     expect(listMembers).not.toHaveBeenCalled();
+    expect(listPending).not.toHaveBeenCalled();
   });
 
   it('sends an anonymous visitor to login', async () => {

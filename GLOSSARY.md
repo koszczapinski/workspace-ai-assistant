@@ -29,6 +29,10 @@ _Avoid_: Participant, seat
 A Member who also manages the Workspace's Memberships and Invitations. The server derives the role only from the Session and the stored Membership, never from submitted data.
 _Avoid_: Admin, manager
 
+**Invitation**:
+A single-use, expiring link from an Owner that lets one person create an account and join as a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
+_Avoid_: Invite code, signup link
+
 **Demo user**:
 A synthetic User created by the seed, with exactly one Membership and a Workspace whose Assistant instructions differ from the other Demo user's (A↔A, B↔B). Used to verify isolation.
 _Avoid_: Test user, seed user

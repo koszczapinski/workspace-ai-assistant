@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { redirect, notFound } from 'next/navigation';
 import { ArrowLeft, ShieldCheck, User } from 'lucide-react';
 import { authorizeWorkspaceOwner } from '@/lib/authorization';
+import { invitationStore } from '@/lib/invitation-store';
 import { listMembers } from '@/lib/workspaces';
+import { InvitationsPanel } from './invitations-panel';
 import MemberActions from '@/components/member-actions';
 
 const roleLabel = { owner: 'Owner', member: 'Member' } as const;
@@ -15,6 +17,7 @@ export default async function Members({ params }: { params: Promise<{ workspaceI
   if (access.kind === 'forbidden') notFound();
 
   const members = await listMembers(access.workspace.id);
+  const pending = await invitationStore.listPending(access.workspace.id, new Date());
   const ownerCount = members.filter(member => member.role === 'owner').length;
 
   return (
@@ -50,6 +53,10 @@ export default async function Members({ params }: { params: Promise<{ workspaceI
             </li>
           ))}
         </ul>
+        <InvitationsPanel
+          workspaceId={access.workspace.id}
+          initialInvitations={pending.map(invitation => ({ id: invitation.id, expiresAt: invitation.expiresAt.toISOString() }))}
+        />
       </section>
     </main>
   );

@@ -8,6 +8,8 @@ import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../src/lib/schema';
 import { createWorkspaceQueries } from '../src/lib/workspaces';
+import { createInvitationStore } from '../src/lib/invitation-store';
+import { generateInvitationToken, hashInvitationToken } from '../src/lib/invitations';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const emailA = process.env.DEMO_USER_A_EMAIL;
@@ -183,6 +185,83 @@ it.skipIf(!testDatabaseUrl)('keeps existing Memberships valid as Members when th
   } finally {
     await connection!.unsafe('SET search_path TO public');
     await connection!.unsafe(`DROP SCHEMA IF EXISTS ${schemaName} CASCADE`);
+  }
+});
+
+// Invitations (same seed; see note above).
+const futureDays = (days: number) => new Date(Date.now() + days * 86_400_000);
+
+async function cleanInvitations() {
+  await connection!`DELETE FROM invitations WHERE created_by IN (SELECT id FROM "user" WHERE email IN (${emailA!}, ${emailB!}))`;
+}
+
+it.skipIf(!testDatabaseUrl)('stores an Invitation with only the token hash and lists it as pending for its own Workspace only', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    const token = generateInvitationToken();
+    const created = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken(token), expiresAt: futureDays(7) });
+
+    const rows = await connection!`SELECT * FROM invitations WHERE id = ${created.id}`;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ workspace_id: 'workspace-a', created_by: owner, status: 'pending', token_hash: hashInvitationToken(token) });
+    expect(JSON.stringify(rows[0])).not.toContain(token);
+
+    const pendingA = await store.listPending('workspace-a', new Date());
+    expect(pendingA.map(i => i.id)).toEqual([created.id]);
+    expect(pendingA[0]).not.toHaveProperty('tokenHash');
+    await expect(store.listPending('workspace-b', new Date())).resolves.toEqual([]);
+  } finally {
+    await cleanInvitations();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('hides expired Invitations from the pending list and refuses to accept them', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('expired-one'), expiresAt: futureDays(-1) });
+    const live = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('live-one'), expiresAt: futureDays(3) });
+
+    expect((await store.listPending('workspace-a', new Date())).map(i => i.id)).toEqual([live.id]);
+    await expect(store.consume(hashInvitationToken('expired-one'), new Date())).resolves.toBe(false);
+  } finally {
+    await cleanInvitations();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('revokes a pending Invitation only within its own Workspace, and a revoked one can never be accepted', async () => {
+  const store = createInvitationStore(drizzle(connection!, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    const created = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('to-revoke'), expiresAt: futureDays(7) });
+
+    await expect(store.revoke('workspace-b', created.id, new Date())).resolves.toBe(false);
+    expect(await store.listPending('workspace-a', new Date())).toHaveLength(1);
+
+    await expect(store.revoke('workspace-a', created.id, new Date())).resolves.toBe(true);
+    await expect(store.revoke('workspace-a', created.id, new Date())).resolves.toBe(false);
+    expect(await store.listPending('workspace-a', new Date())).toEqual([]);
+    await expect(store.consume(hashInvitationToken('to-revoke'), new Date())).resolves.toBe(false);
+  } finally {
+    await cleanInvitations();
+  }
+});
+
+it.skipIf(!testDatabaseUrl)('lets an Invitation be used once even under simultaneous attempts', async () => {
+  const pool = postgres(testDatabaseUrl!, { max: 5 }); // real parallel connections
+  const store = createInvitationStore(drizzle(pool, { schema }));
+  const owner = await userId(emailA!);
+  try {
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('single-use'), expiresAt: futureDays(7) });
+
+    const results = await Promise.all(Array.from({ length: 5 }, () => store.consume(hashInvitationToken('single-use'), new Date())));
+    expect(results.filter(Boolean)).toHaveLength(1);
+    await expect(store.listPending('workspace-a', new Date())).resolves.toEqual([]);
+    await expect(store.consume(hashInvitationToken('unknown-token'), new Date())).resolves.toBe(false);
+  } finally {
+    await pool.end();
+    await cleanInvitations();
   }
 });
 
