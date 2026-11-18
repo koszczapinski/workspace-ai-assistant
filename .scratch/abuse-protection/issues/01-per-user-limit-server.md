@@ -6,7 +6,7 @@ The `429` contract defined here is shared by tickets 02 and 03: a JSON error bod
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] A new table of usage counters exists with a committed migration; it stores no message content.
 - [ ] The chat endpoint gets an injected limiter dependency, checked after Session lookup, request validation and Workspace authorization, and before the provider is called.
