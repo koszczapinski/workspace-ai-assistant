@@ -1,6 +1,7 @@
 import { and,asc,eq,sql } from 'drizzle-orm';
 import { db } from './db'; import type { MemberChangeResult, MemberRole } from './member-types';
 import { memberships,user,workspaces } from './schema';
+import type { WorkspaceSettings } from './workspace-settings';
 
 export function createWorkspaceQueries(database: typeof db) {
   return {
@@ -34,6 +35,23 @@ export function createWorkspaceQueries(database: typeof db) {
         .where(and(eq(memberships.userId, userId), eq(workspaces.id, id), eq(memberships.role, 'owner')))
         .limit(1);
       return workspace ?? null;
+    },
+    /** The Workspace settings as stored; call only after the Owner check has passed. */
+    async workspaceSettings(workspaceId: string): Promise<WorkspaceSettings | null> {
+      if (!database) return null;
+      const [settings] = await database.select({ name: workspaces.name, assistantInstructions: workspaces.assistantInstructions })
+        .from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1);
+      return settings ?? null;
+    },
+    /** Replaces name and Assistant instructions of one Workspace; last write wins, names need not be unique. */
+    async updateWorkspaceSettings(workspaceId: string, settings: WorkspaceSettings): Promise<WorkspaceSettings> {
+      if (!database) throw new Error('Database unavailable');
+      const [saved] = await database.update(workspaces)
+        .set({ name: settings.name, assistantInstructions: settings.assistantInstructions })
+        .where(eq(workspaces.id, workspaceId))
+        .returning({ name: workspaces.name, assistantInstructions: workspaces.assistantInstructions });
+      if (!saved) throw new Error('Workspace not found');
+      return saved;
     },
     /** Every Member of one Workspace with their role; Owners first. */
     async listMembers(workspaceId: string) {
@@ -99,6 +117,8 @@ const workspaceQueries = createWorkspaceQueries(db);
 export const listWorkspaces = workspaceQueries.listWorkspaces;
 export const authorizedWorkspace = workspaceQueries.authorizedWorkspace;
 export const ownedWorkspace = workspaceQueries.ownedWorkspace;
+export const workspaceSettings = workspaceQueries.workspaceSettings;
+export const updateWorkspaceSettings = workspaceQueries.updateWorkspaceSettings;
 export const listMembers = workspaceQueries.listMembers;
 export const changeRole = workspaceQueries.changeRole;
 export const removeMember = workspaceQueries.removeMember;

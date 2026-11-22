@@ -73,7 +73,10 @@ An Owner can, for their own Workspace only:
 
 - see every Member and their role;
 - create, list and revoke Invitations;
-- make a Member an Owner, make an Owner a Member, remove a Member, or leave the Workspace.
+- make a Member an Owner, make an Owner a Member, remove a Member, or leave the Workspace;
+- change the Workspace settings (name and Assistant instructions) on the settings screen at `/w/<id>/settings`. The next chat request in that Workspace uses the new Assistant instructions; a response already streaming finishes with the ones it started with. Non-Owners get no entry point and the not-found page there.
+
+The public demo lets visitors change the Demo Workspaces' settings, because Demo users are Owners of their Workspaces. Re-running `npm run db:seed` restores the seeded names and Assistant instructions.
 
 A Workspace always keeps at least one Owner: removing, demoting or leaving as the last Owner is blocked, with an explanation on screen. Removal takes effect on the removed User's next request; a response already streaming may finish.
 
@@ -139,7 +142,7 @@ The committed [chat screenshot](output/playwright/critical-journey.png) shows th
 
 Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, Member and Owner roles, an Owner-only members screen with Invitations by link (create, revoke, accept with account creation), a last-Owner guard, membership-filtered workspace list, server-side page and chat authorization, workspace-specific instructions, streamed chat, stop/retry controls, stored private Conversations that a reload keeps (list, New conversation, delete), fake-provider tests, and Playwright journeys for login-and-stream, reloading a stored Conversation, and creating and accepting an Invitation.
 
-Limitations: a reload keeps the Conversation, but Conversations are private to their User (no sharing within a Workspace), and there is no search, rename or automatic expiry of Conversations; no public signup, email delivery of Invitations, inviting existing Users, Workspace creation or editing, password reset, more than two roles, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection (only the basic Usage limits above exist). The demo may go public only with the Usage limits configured. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
+Limitations: a reload keeps the Conversation, but Conversations are private to their User (no sharing within a Workspace), and there is no search, rename or automatic expiry of Conversations; no public signup, email delivery of Invitations, inviting existing Users, Workspace creation, password reset, more than two roles, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection (only the basic Usage limits above exist). The demo may go public only with the Usage limits configured. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
 
 Agent-assisted implementation followed the `implement-spec` and `tdd` skills. The Playwright skill was consulted for browser-artifact conventions; the required automated test is implemented with the repository's installed `@playwright/test` convention. No claim is made that other skills or agents were used.
 

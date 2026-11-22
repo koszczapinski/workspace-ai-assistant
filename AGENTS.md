@@ -20,7 +20,7 @@ Do not add TanStack Query or a global state library unless there is a demonstrat
 
 Target a complete two-evening MVP. Prefer a narrow, finished implementation over extra features.
 
-Out of scope: RAG, file uploads, vector databases, billing, tools or function calling, public signup, Workspace creation and editing, inviting existing Users, email delivery of Invitations, password reset, more than two roles, model selection, and production-grade abuse protection.
+Out of scope: RAG, file uploads, vector databases, billing, tools or function calling, public signup, Workspace creation, inviting existing Users, email delivery of Invitations, password reset, more than two roles, model selection, and production-grade abuse protection.
 
 A Conversation is stored in PostgreSQL, owned by one User in one Workspace, and private to that User; no other Member, including an Owner, can read it. Chat messages are stored only as part of that private Conversation.
 

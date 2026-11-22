@@ -22,9 +22,15 @@ Goal: keep the project a portfolio piece that shows depth. One small, finished i
    - A User renames their own Conversation inline in the Conversations list: Enter saves, Escape cancels, an empty Title restores the automatic one (the truncated first message).
    - `PATCH` on the single-Conversation endpoint; the Conversation keeps its place in the list and a later turn does not overwrite a manual Title.
 
+5. **Workspace settings** (spec: GitHub issue #18, ticket #21).
+   - An Owner edits the Workspace's name and Assistant instructions on a settings screen next to the members screen; saved together, last write wins, applied from the next chat request. No new role.
+
 ## Later (not excluded, not yet ordered)
 
-RAG and tool use / function calling. They stay out of scope for the current version (`AGENTS.md`), but they are not ruled out of future iterations. Their order and scope get decided in a later grilling round, once the three increments above are done.
+- Per-Workspace Usage limits (configurable by an Owner).
+- An audit log of Owner actions (settings changes, Membership changes).
+
+RAG and tool use / function calling. They stay out of scope for the current version (`AGENTS.md`), but they are not ruled out of future iterations. Their order and scope get decided in a later grilling round, once the five increments above are done.
 
 ## Not planned
 
