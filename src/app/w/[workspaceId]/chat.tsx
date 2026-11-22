@@ -57,6 +57,20 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
   const [listError, setListError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
   const [editing, setEditing] = useState<{ id: string; value: string; saving: boolean; error: string | null } | null>(null);
+  const titleInput = useRef<HTMLInputElement>(null);
+  const editingSaving = editing?.saving;
+  const editingId = editing?.id;
+
+  // A disabled input loses focus while saving: give it back so a failed save can be fixed from the keyboard.
+  useEffect(() => {
+    if (editingId !== undefined && editingSaving === false) titleInput.current?.focus();
+  }, [editingId, editingSaving]);
+
+  /** Leaves edit mode by keyboard and returns focus to the row's rename button, so focus is not lost to the page. */
+  function stopEditing(conversationId: string) {
+    setEditing(null);
+    setTimeout(() => document.querySelector<HTMLElement>(`[data-rename-id="${CSS.escape(conversationId)}"]`)?.focus(), 0);
+  }
 
   // A navigation brings fresh server props: show what the server opened.
   const [served, setServed] = useState({ conversations, conversation });
@@ -150,14 +164,14 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
     const stored: unknown = response?.ok ? await response.json().catch(() => null) : null;
     const title = typeof (stored as { title?: unknown } | null)?.title === 'string' ? (stored as { title: string }).title : null;
     if (title === null) {
-      const tooLong = response?.status === 400;
+      const invalid = response?.status === 400;
       setEditing({
         id: conversationId, value, saving: false,
-        error: tooLong ? 'Could not rename the conversation. Use at most 100 characters.' : 'Could not rename the conversation. Try again.',
+        error: invalid ? 'Could not rename the conversation. Use at most 100 characters.' : 'Could not rename the conversation. Try again.',
       });
       return;
     }
-    setEditing(null);
+    stopEditing(conversationId);
     setList(previous => ({
       ...previous,
       conversations: previous.conversations.map(entry => entry.id === conversationId ? { ...entry, title } : entry),
@@ -206,6 +220,8 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
                         <Input
                           aria-label="Conversation title"
                           aria-invalid={editing.error ? true : undefined}
+                          ref={titleInput}
+                          aria-busy={editing.saving || undefined}
                           autoFocus
                           value={editing.value}
                           disabled={editing.saving}
@@ -214,7 +230,7 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
                           onBlur={() => { if (!editing.saving) setEditing(null); }}
                           onKeyDown={event => {
                             if (event.key === 'Enter') { event.preventDefault(); void rename(entry.id, editing.value); }
-                            else if (event.key === 'Escape') setEditing(null);
+                            else if (event.key === 'Escape') stopEditing(entry.id);
                           }}
                         />
                         {editing.error && <p role="alert" className="w-full px-3 pb-1 text-xs text-destructive">{editing.error}</p>}
@@ -236,6 +252,7 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
                       variant="ghost"
                       size="icon-sm"
                       aria-label={`Rename conversation: ${entry.title}`}
+                      data-rename-id={entry.id}
                       className={`rounded-full text-muted-foreground ${focusRing}`}
                       onClick={() => setEditing({ id: entry.id, value: entry.title, saving: false, error: null })}
                     >

@@ -320,6 +320,19 @@ describe('the Conversation list in the Workspace', () => {
       expect(fetch).not.toHaveBeenCalled();
     });
 
+    it('returns focus to the rename button after Escape and keeps it in the input after a failed save', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'bad' }, { status: 400 })));
+      renderList();
+
+      const input = startRename('Pricing');
+      fireEvent.keyDown(input, { key: 'Enter' });
+      await within(conversationList()).findByRole('alert');
+      await waitFor(() => expect(screen.getByRole('textbox', { name: 'Conversation title' })).toHaveFocus());
+
+      fireEvent.keyDown(screen.getByRole('textbox', { name: 'Conversation title' }), { key: 'Escape' });
+      await waitFor(() => expect(screen.getByRole('button', { name: 'Rename conversation: Pricing' })).toHaveFocus());
+    });
+
     it('keeps the old Title and shows an error when saving fails', async () => {
       vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Title must be text of at most 100 characters' }, { status: 400 })));
       renderList();
