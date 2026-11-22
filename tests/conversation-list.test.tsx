@@ -287,6 +287,22 @@ describe('the Conversation list in the Workspace', () => {
       expect(within(conversationList()).getAllByRole('link').map(link => link.textContent)).toEqual(['Launch plan', 'Stored by server']);
     });
 
+    it('saves an empty input and shows the restored Title returned by the server', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ title: 'How much does it cost' }));
+      vi.stubGlobal('fetch', fetch);
+      renderList();
+
+      const input = startRename('Pricing');
+      fireEvent.change(input, { target: { value: '' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await within(conversationList()).findByRole('link', { name: 'How much does it cost' });
+      expect(fetch).toHaveBeenCalledWith('/api/workspaces/workspace-a/conversations/conv-2', expect.objectContaining({
+        method: 'PATCH', body: JSON.stringify({ title: '' }),
+      }));
+      expect(screen.queryByRole('textbox', { name: 'Conversation title' })).not.toBeInTheDocument();
+    });
+
     it('cancels with Escape and with blur, keeping the Title and sending nothing', () => {
       const fetch = vi.fn();
       vi.stubGlobal('fetch', fetch);

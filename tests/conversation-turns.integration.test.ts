@@ -157,6 +157,27 @@ it.skipIf(!testDatabaseUrl)('restores the automatic Title from the first User me
   expect((await conversationRow(id))?.title).toBe('Plan the launch');
 });
 
+it.skipIf(!testDatabaseUrl)('resetting the Title keeps updated_at and truncates a long first message', async () => {
+  const long = `${'word '.repeat(30)}end`;
+  const id = await savedConversation(long, at(60));
+  await store().renameConversation(owner, workspace, id, 'Mine');
+
+  const restored = await store().renameConversation(owner, workspace, id, null);
+
+  expect(restored).toBe(long.replace(/\s+/g, ' ').slice(0, 80));
+  expect(await conversationRow(id)).toEqual({ title: restored, updatedAt: at(60) });
+});
+
+it.skipIf(!testDatabaseUrl)('cannot reset the Title of another User, another Workspace, or a missing Conversation', async () => {
+  const id = await savedConversation('Private');
+  await store().renameConversation(owner, workspace, id, 'Mine');
+
+  await expect(store().renameConversation(other, workspace, id, null)).resolves.toBeNull();
+  await expect(store().renameConversation(owner, otherWorkspace, id, null)).resolves.toBeNull();
+  await expect(store().renameConversation(owner, workspace, randomUUID(), null)).resolves.toBeNull();
+  expect((await conversationRow(id))?.title).toBe('Mine');
+});
+
 it.skipIf(!testDatabaseUrl)('keeps a manual Title when a later turn is stored', async () => {
   const id = await savedConversation('First question', at(50));
   await store().renameConversation(owner, workspace, id, 'Mine');
