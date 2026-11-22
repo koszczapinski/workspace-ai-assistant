@@ -29,6 +29,7 @@ describe('workspace authorization', () => {
 
     await expect(authorizeWorkspace('workspace-a')).resolves.toEqual({
       kind: 'authorized',
+      userId: 'user-a',
       workspace: { id: 'workspace-a', name: 'A', assistantInstructions: 'A only' },
     });
     expect(getSession).toHaveBeenCalledWith({ headers: expect.any(Headers) });
