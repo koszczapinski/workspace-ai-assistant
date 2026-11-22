@@ -13,10 +13,12 @@ const owner = `${runId}-owner`;
 const other = `${runId}-other`;
 const workspace = `${runId}-ws`;
 const otherWorkspace = `${runId}-ws2`;
+let guardPassed = false;
 
 beforeAll(async () => {
   if (!connection) return;
   await assertPostgresOperationAllowed(connection, testDatabaseUrl!, ['test']);
+  guardPassed = true;
   for (const id of [owner, other]) {
     await connection`INSERT INTO "user" (id, name, email) VALUES (${id}, ${id}, ${`${id}@example.test`})`;
   }
@@ -27,8 +29,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!connection) return;
-  await connection`DELETE FROM workspaces WHERE id IN (${workspace}, ${otherWorkspace})`;
-  await connection`DELETE FROM "user" WHERE id IN (${owner}, ${other})`;
+  // A refused guard means this may not be the test database: close without deleting anything.
+  if (guardPassed) {
+    await connection`DELETE FROM workspaces WHERE id IN (${workspace}, ${otherWorkspace})`;
+    await connection`DELETE FROM "user" WHERE id IN (${owner}, ${other})`;
+  }
   await connection.end();
 });
 

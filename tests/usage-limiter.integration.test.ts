@@ -9,15 +9,18 @@ import { createUsageLimiter } from '../src/lib/usage-limiter';
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const connection = testDatabaseUrl ? postgres(testDatabaseUrl, { max: 10 }) : null;
 const runId = randomUUID();
+let guardPassed = false;
 
 beforeAll(async () => {
   if (!connection) return;
   await assertPostgresOperationAllowed(connection, testDatabaseUrl!, ['test']);
+  guardPassed = true;
 });
 
 afterAll(async () => {
   if (!connection) return;
-  await connection`DELETE FROM usage_counters WHERE subject_id LIKE ${`${runId}%`}`;
+  // A refused guard means this may not be the test database: close without deleting anything.
+  if (guardPassed) await connection`DELETE FROM usage_counters WHERE subject_id LIKE ${`${runId}%`}`;
   await connection.end();
 });
 
