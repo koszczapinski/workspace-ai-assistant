@@ -2,6 +2,7 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { createUIMessageStream, createUIMessageStreamResponse, DefaultChatTransport } from 'ai';
+import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai';
 import { afterEach, expect, it, vi } from 'vitest';
 import Chat from '@/app/w/[workspaceId]/chat';
 
@@ -97,11 +98,12 @@ it('continues the Conversation the server named in its finished reply', async ()
       return createUIMessageStreamResponse({
         stream: createUIMessageStream({
           execute: async ({ writer }) => {
-            writer.write({ type: 'start', messageMetadata: { conversationId: 'conversation-9' } });
-            await new Promise(resolve => setTimeout(resolve, 20));
+            writer.write({ type: 'start' });
             writer.write({ type: 'text-start', id: 'reply' });
             writer.write({ type: 'text-delta', id: 'reply', delta: `Reply ${bodies.length}` });
             writer.write({ type: 'text-end', id: 'reply' });
+            writer.write({ type: 'message-metadata', messageMetadata: { conversationId: 'conversation-9' } });
+            writer.write({ type: 'finish' });
           },
         }),
       });
@@ -119,4 +121,37 @@ it('continues the Conversation the server named in its finished reply', async ()
 
   expect(bodies[0]).not.toHaveProperty('conversationId');
   expect(bodies[1]).toMatchObject({ workspaceId: 'workspace-a', conversationId: 'conversation-9' });
+});
+
+it('accepts the next message after a reply that completes at once', async () => {
+  const sent: string[] = [];
+  // Each reply is complete before the transport returns, so the chat can go from ready through
+  // streaming back to ready without rendering in between.
+  const transport: ChatTransport<UIMessage> = {
+    sendMessages: async ({ messages }) => {
+      const last = messages.at(-1)!;
+      sent.push(last.parts.map(part => (part.type === 'text' ? part.text : '')).join(''));
+      return new ReadableStream<UIMessageChunk>({
+        start(controller) {
+          controller.enqueue({ type: 'start' });
+          controller.enqueue({ type: 'text-start', id: 'r' });
+          controller.enqueue({ type: 'text-delta', id: 'r', delta: `Reply ${sent.length}` });
+          controller.enqueue({ type: 'text-end', id: 'r' });
+          controller.enqueue({ type: 'finish' });
+          controller.close();
+        },
+      });
+    },
+    reconnectToStream: async () => null,
+  };
+  render(<Chat id="workspace-a" name="Workspace A" transport={transport} />);
+
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'First' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await screen.findByText('Reply 1');
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Second' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+
+  await screen.findByText('Reply 2');
+  expect(sent).toEqual(['First', 'Second']);
 });

@@ -1,5 +1,67 @@
+import type { UIMessageChunk } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
 import { createChatPost } from '@/app/api/chat/route';
+
+/** A provider reply as UI message chunks; `wait` pauses the stream until the promise settles. */
+function replyOf(chunks: Array<UIMessageChunk | { wait: Promise<unknown> }>): ReadableStream<UIMessageChunk> {
+  return new ReadableStream({
+    async start(controller) {
+      for (const chunk of chunks) {
+        if ('wait' in chunk) await chunk.wait;
+        else controller.enqueue(chunk);
+      }
+      controller.close();
+    },
+  });
+}
+
+function textChunks(text: string): UIMessageChunk[] {
+  return [
+    { type: 'text-start', id: 't' },
+    { type: 'text-delta', id: 't', delta: text },
+    { type: 'text-end', id: 't' },
+  ];
+}
+
+function reply(text = 'ok') {
+  return replyOf([{ type: 'start' }, ...textChunks(text), { type: 'finish' }]);
+}
+
+/** Reads the chat response's server-sent events as the client receives them. */
+function eventsOf(response: Response) {
+  const reader = response.body!.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = '';
+  const pending: Array<Record<string, unknown>> = [];
+  return {
+    /** The next event, or null at the end of the stream. */
+    async next(): Promise<Record<string, unknown> | null> {
+      while (pending.length === 0) {
+        const { done, value } = await reader.read();
+        if (done) return null;
+        buffer += value;
+        const blocks = buffer.split('\n\n');
+        buffer = blocks.pop()!;
+        for (const block of blocks) {
+          const data = block.replace(/^data: /, '');
+          if (data && data !== '[DONE]') pending.push(JSON.parse(data));
+        }
+      }
+      return pending.shift()!;
+    },
+    async rest() {
+      const events: Array<Record<string, unknown>> = [];
+      for (let event = await this.next(); event; event = await this.next()) events.push(event);
+      return events;
+    },
+    cancel: () => reader.cancel(),
+  };
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(done => { resolve = done; });
+  return { promise, resolve };
+}
 
 const authorizedWorkspace = {
   id: 'workspace-a',
@@ -25,7 +87,7 @@ type StreamInput = Parameters<Parameters<typeof createChatPost>[0]['stream']>[0]
 
 describe('POST /api/chat', () => {
   it('streams an authorized request with server instructions and only the new User message from the body', async () => {
-    const stream = vi.fn<(input: StreamInput) => Promise<Response>>(async () => new Response('streamed response'));
+    const stream = vi.fn<(input: StreamInput) => Promise<ReadableStream<UIMessageChunk>>>(async () => reply());
     const getSession = vi.fn(async () => ({ user: { id: 'user-a' } }));
     const authorize = vi.fn(async (userId: string) => userId === 'user-a'
       ? ({ kind: 'authorized' as const, workspace: authorizedWorkspace })
@@ -58,7 +120,7 @@ describe('POST /api/chat', () => {
   });
 
   it('rejects anonymous and non-member requests before the provider', async () => {
-    const stream = vi.fn(async () => new Response('should not run'));
+    const stream = vi.fn(async () => reply());
     const anonymousPost = createChatPost({
       conversations: emptyConversations(),
       getSession: vi.fn(async () => null),
@@ -83,7 +145,7 @@ describe('POST /api/chat', () => {
   });
 
   it('rejects empty, malformed, and oversized requests before the provider', async () => {
-    const stream = vi.fn(async () => new Response('should not run'));
+    const stream = vi.fn(async () => reply());
     const post = createChatPost({
       conversations: emptyConversations(),
       getSession: vi.fn(async () => ({ user: { id: 'user-a' } })),
@@ -112,7 +174,7 @@ describe('POST /api/chat', () => {
     const authorized = async () => ({ kind: 'authorized' as const, workspace: authorizedWorkspace });
 
     it('returns 429 with the shared contract and never calls the provider when over the limit', async () => {
-      const stream = vi.fn(async () => new Response('should not run'));
+      const stream = vi.fn(async () => reply());
       const post = createChatPost({
       conversations: emptyConversations(),
         getSession: async () => user,
@@ -151,7 +213,7 @@ describe('POST /api/chat', () => {
 
     it('never reaches the limiter for unauthenticated, invalid, oversized or forbidden requests', async () => {
       const check = vi.fn(async () => ({ allowed: true as const }));
-      const stream = vi.fn(async () => new Response('should not run'));
+      const stream = vi.fn(async () => reply());
       const make = (session: typeof user | null, kind: 'authorized' | 'forbidden') => createChatPost({
       conversations: emptyConversations(),
         getSession: async () => session,
@@ -177,7 +239,7 @@ describe('POST /api/chat', () => {
       conversations: emptyConversations(),
         getSession: async () => user,
         authorize: authorized,
-        stream: vi.fn(async () => new Response('ok')),
+        stream: vi.fn(async () => reply()),
         limiter: { check },
       });
 
@@ -198,7 +260,7 @@ describe('POST /api/chat', () => {
           kind: 'authorized' as const,
           workspace: { ...authorizedWorkspace, id: workspaceId },
         }),
-        stream: vi.fn(async () => new Response('ok')),
+        stream: vi.fn(async () => reply()),
         limiter: { check },
       });
       const requestFor = (workspaceId: string) => new Request('http://localhost/api/chat', {
@@ -224,7 +286,7 @@ describe('POST /api/chat', () => {
       const check = vi.fn(async () => ({ allowed: true as const }));
       const stream = vi.fn()
         .mockRejectedValueOnce(new Error('provider down'))
-        .mockResolvedValueOnce(new Response('ok'));
+        .mockResolvedValueOnce(reply());
       const post = createChatPost({
       conversations: emptyConversations(), getSession: async () => user, authorize: authorized, stream, limiter: { check } });
 
@@ -234,7 +296,7 @@ describe('POST /api/chat', () => {
     });
 
     it('returns Assistant unavailable and skips the provider when the limiter store fails', async () => {
-      const stream = vi.fn(async () => new Response('should not run'));
+      const stream = vi.fn(async () => reply());
       const post = createChatPost({
       conversations: emptyConversations(),
         getSession: async () => user,
@@ -258,7 +320,7 @@ describe('POST /api/chat', () => {
 
     it('rejects a missing or foreign Conversation id with a 404 before the limiter and the provider', async () => {
       const check = vi.fn(async () => ({ allowed: true as const }));
-      const stream = vi.fn(async () => new Response('should not run'));
+      const stream = vi.fn(async () => reply());
       const conversations = emptyConversations();
       const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream, limiter: { check } });
 
@@ -290,9 +352,11 @@ describe('POST /api/chat', () => {
         role: (i % 2 === 0 ? 'user' : 'assistant') as 'user' | 'assistant',
         content: `stored ${i}`,
         stopped: false,
+        id: `m${i}`,
+        createdAt: new Date(2030, 0, 1, 0, i),
       }));
       const conversations = { history: vi.fn(async () => stored), saveTurn: vi.fn(async () => {}) };
-      const stream = vi.fn<(input: StreamInput) => Promise<Response>>(async () => new Response('ok'));
+      const stream = vi.fn<(input: StreamInput) => Promise<ReadableStream<UIMessageChunk>>>(async () => reply());
       const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream, limiter: allowAll });
 
       const response = await post(makeRequest([
@@ -302,8 +366,7 @@ describe('POST /api/chat', () => {
 
       expect(response.status).toBe(200);
       expect(conversations.history).toHaveBeenCalledWith('user-a', 'workspace-a', 'c-1', 29);
-      const { messages, conversationId } = stream.mock.calls[0]![0];
-      expect(conversationId).toBe('c-1');
+      const { messages } = stream.mock.calls[0]![0];
       expect(messages).toHaveLength(30);
       expect(messages.map(message => [message.role, message.parts])).toEqual([
         ...stored.map(message => [message.role, [{ type: 'text', text: message.content }]]),
@@ -313,50 +376,103 @@ describe('POST /api/chat', () => {
 
     it('saves a finished reply as a turn of a new server-generated Conversation for the Session User', async () => {
       const conversations = emptyConversations();
-      const stream = vi.fn<(input: StreamInput) => Promise<Response>>(async () => new Response('ok'));
-      const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream, limiter: allowAll });
+      const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream: async () => reply('An answer'), limiter: allowAll });
 
-      await post(makeRequest([say('First question')], { userId: 'attacker' }));
-      const input = stream.mock.calls[0]![0];
-      expect(input.conversationId).toEqual(expect.any(String));
-      expect(conversations.saveTurn).not.toHaveBeenCalled();
-
-      await input.onReply({ text: 'An answer', stopped: false });
+      const events = await eventsOf(await post(makeRequest([say('First question')], { userId: 'attacker' }))).rest();
 
       expect(conversations.saveTurn).toHaveBeenCalledTimes(1);
-      expect(conversations.saveTurn).toHaveBeenCalledWith(expect.objectContaining({
-        conversationId: input.conversationId,
+      const [turn] = conversations.saveTurn.mock.calls[0] as unknown as [{ conversationId: string }];
+      expect(turn).toEqual(expect.objectContaining({
+        conversationId: expect.any(String),
         userId: 'user-a',
         workspaceId: 'workspace-a',
         userText: 'First question',
         assistantText: 'An answer',
         stopped: false,
       }));
+      expect(events).toContainEqual({ type: 'message-metadata', messageMetadata: { conversationId: turn.conversationId } });
     });
 
-    it('continues the given Conversation and marks a Stopped reply', async () => {
+    it('names the Conversation to the client only once its turn is saved, before the reply finishes', async () => {
+      const saving = deferred();
+      const conversations = { history: vi.fn(async () => null), saveTurn: vi.fn(() => saving.promise) };
+      const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream: async () => reply('An answer'), limiter: allowAll });
+
+      const events = eventsOf(await post(makeRequest([say('First question')])));
+      const seen: Array<Record<string, unknown>> = [];
+      while (seen.at(-1)?.type !== 'text-end') seen.push((await events.next())!);
+      await vi.waitFor(() => expect(conversations.saveTurn).toHaveBeenCalled());
+      const nextEvent = events.next();
+      const whileSaving = await Promise.race([nextEvent, new Promise(resolve => setTimeout(() => resolve('still saving'), 50))]);
+      expect(whileSaving).toBe('still saving');
+
+      saving.resolve();
+      const after = [await nextEvent, ...await events.rest()];
+      const [turn] = conversations.saveTurn.mock.calls[0] as unknown as [{ conversationId: string }];
+      expect(after).toEqual([
+        { type: 'message-metadata', messageMetadata: { conversationId: turn.conversationId } },
+        { type: 'finish' },
+      ]);
+    });
+
+    it('never names a Conversation whose turn failed to save, and keeps the content out of the log', async () => {
+      const conversations = { history: vi.fn(async () => null), saveTurn: vi.fn(async () => { throw new Error('db down'); }) };
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream: async () => reply('Secret reply'), limiter: allowAll });
+
+      const events = await eventsOf(await post(makeRequest([say('Secret prompt')]))).rest();
+
+      expect(conversations.saveTurn).toHaveBeenCalledTimes(1);
+      expect(events.some(event => event.type === 'message-metadata')).toBe(false);
+      expect(events.at(-1)).toEqual({ type: 'finish' });
+      expect(JSON.stringify(events)).toContain('Secret reply');
+      expect(JSON.stringify(error.mock.calls)).not.toMatch(/Secret/);
+      error.mockRestore();
+    });
+
+    it('stores nothing and names nothing when the provider fails', async () => {
+      const conversations = emptyConversations();
+      const failing = replyOf([{ type: 'start' }, ...textChunks('Half'), { type: 'error', errorText: 'An error occurred.' }]);
+      const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream: async () => failing, limiter: allowAll });
+
+      const events = await eventsOf(await post(makeRequest([say('Hi')]))).rest();
+
+      expect(events).toContainEqual({ type: 'error', errorText: 'An error occurred.' });
+      expect(events.some(event => event.type === 'message-metadata')).toBe(false);
+      expect(conversations.saveTurn).not.toHaveBeenCalled();
+    });
+
+    it('continues the given Conversation and stores a reply Stopped after some text, even when the client stops reading', async () => {
       const conversations = { history: vi.fn(async () => []), saveTurn: vi.fn(async () => {}) };
-      const stream = vi.fn<(input: StreamInput) => Promise<Response>>(async () => new Response('ok'));
+      const clientGone = deferred();
+      const stream = vi.fn(async () => replyOf([
+        { type: 'start' }, { type: 'text-start', id: 't' }, { type: 'text-delta', id: 't', delta: 'Partial' },
+        { wait: clientGone.promise },
+        { type: 'abort' },
+      ]));
       const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream, limiter: allowAll });
 
-      await post(makeRequest([say('Again')], { conversationId: 'c-1' }));
-      await stream.mock.calls[0]![0].onReply({ text: 'Partial', stopped: true });
+      const events = eventsOf(await post(makeRequest([say('Again')], { conversationId: 'c-1' })));
+      while ((await events.next())?.type !== 'text-delta');
+      await events.cancel();
+      clientGone.resolve();
 
+      await vi.waitFor(() => expect(conversations.saveTurn).toHaveBeenCalled());
       expect(conversations.saveTurn).toHaveBeenCalledWith(expect.objectContaining({
         conversationId: 'c-1', userText: 'Again', assistantText: 'Partial', stopped: true,
       }));
     });
 
-    it('swallows a failed save so the streamed reply is unaffected', async () => {
-      const conversations = { history: vi.fn(async () => null), saveTurn: vi.fn(async () => { throw new Error('db down'); }) };
-      const stream = vi.fn<(input: StreamInput) => Promise<Response>>(async () => new Response('ok'));
-      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream, limiter: allowAll });
+    it('stores no turn for a reply Stopped before any text', async () => {
+      const conversations = emptyConversations();
+      const post = createChatPost({
+        conversations, getSession: async () => user, authorize: authorized, limiter: allowAll,
+        stream: async () => replyOf([{ type: 'start' }, { type: 'abort' }]),
+      });
 
-      await post(makeRequest([say('Secret prompt')]));
-      await expect(stream.mock.calls[0]![0].onReply({ text: 'Secret reply', stopped: false })).resolves.toBeUndefined();
-      expect(JSON.stringify(error.mock.calls)).not.toMatch(/Secret/);
-      error.mockRestore();
+      await eventsOf(await post(makeRequest([say('Hi')]))).rest();
+
+      expect(conversations.saveTurn).not.toHaveBeenCalled();
     });
 
     it('stores nothing for a request over the Usage limit', async () => {

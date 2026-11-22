@@ -1,6 +1,6 @@
 import { authorizeWorkspace } from '@/lib/authorization';
 import { createConversationListHandler } from '@/lib/conversation-handlers';
-import { listConversations } from '@/lib/conversation-queries';
+import { listConversations } from '@/lib/conversations';
 
 const list = createConversationListHandler({ authorize: authorizeWorkspace, queries: { listConversations } });
 

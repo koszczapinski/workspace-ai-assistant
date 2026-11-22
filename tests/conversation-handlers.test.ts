@@ -1,13 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createConversationDeleteHandler, type ConversationAccess } from '../src/lib/conversation-handlers';
+import type { MemberAccess } from '../src/lib/authorization';
+import { createConversationDeleteHandler } from '../src/lib/conversation-handlers';
 
-function deleteAs(access: ConversationAccess, deleted = true) {
+function deleteAs(access: MemberAccess, deleted = true) {
   const deleteConversation = vi.fn(async () => deleted);
   const authorize = vi.fn(async () => access);
   const remove = createConversationDeleteHandler({ authorize, queries: { deleteConversation } });
   return { remove: (conversationId: string) => remove('workspace-a', conversationId), authorize, deleteConversation };
 }
-const member: ConversationAccess = { kind: 'authorized', userId: 'user-a', workspace: { id: 'workspace-a' } };
+const member: MemberAccess = { kind: 'authorized', userId: 'user-a', workspace: { id: 'workspace-a', name: 'Workspace A', assistantInstructions: 'x' } };
 
 describe('deleting a Conversation', () => {
   it("deletes the Session User's own Conversation", async () => {

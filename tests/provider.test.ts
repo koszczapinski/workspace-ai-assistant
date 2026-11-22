@@ -1,74 +1,61 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { streamAssistant } from '@/lib/provider';
-import type { UIMessage } from 'ai';
+import type { UIMessage, UIMessageChunk } from 'ai';
 
 afterEach(() => {
   vi.restoreAllMocks();
   vi.unstubAllEnvs();
 });
 
+const hello: UIMessage = { id: 'user-message', role: 'user', parts: [{ type: 'text', text: 'Hello' }] };
+
+async function readAll(stream: ReadableStream<UIMessageChunk>) {
+  const chunks: UIMessageChunk[] = [];
+  const reader = stream.getReader();
+  for (let next = await reader.read(); !next.done; next = await reader.read()) chunks.push(next.value);
+  return chunks;
+}
+
+const textOf = (chunks: UIMessageChunk[]) => chunks.map(chunk => (chunk.type === 'text-delta' ? chunk.delta : '')).join('');
+
 it('uses the configured delay for each fake-provider pause', async () => {
   vi.stubEnv('CHAT_FAKE_PROVIDER', 'true');
   vi.stubEnv('CHAT_FAKE_PROVIDER_DELAY_MS', '40');
-  const userMessage: UIMessage = {
-    id: 'user-message',
-    role: 'user',
-    parts: [{ type: 'text', text: 'Hello' }],
-  };
 
   const startedAt = performance.now();
-  const response = await streamAssistant({ instructions: 'Use demo responses.', messages: [userMessage], conversationId: 'c-1', onReply: async () => {} });
-  const body = await response.text();
+  const chunks = await readAll(await streamAssistant({ instructions: 'Use demo responses.', messages: [hello] }));
   const elapsedMs = performance.now() - startedAt;
 
   expect(elapsedMs).toBeGreaterThanOrEqual(65);
-  expect(body).toContain('Demo response: ');
-  expect(body).toContain('Hello');
+  expect(textOf(chunks)).toBe('Demo response: Hello');
+  expect(chunks.at(-1)).toEqual({ type: 'finish' });
 });
 
-const hello: UIMessage = { id: 'user-message', role: 'user', parts: [{ type: 'text', text: 'Hello' }] };
-
-it('sends the Conversation id to the client and reports the finished fake reply once', async () => {
-  vi.stubEnv('CHAT_FAKE_PROVIDER', 'true');
-  vi.stubEnv('CHAT_FAKE_PROVIDER_DELAY_MS', '0');
-  const onReply = vi.fn(async () => {});
-
-  const response = await streamAssistant({ instructions: 'Demo', messages: [hello], conversationId: 'c-42', onReply });
-  const body = await response.text();
-  await vi.waitFor(() => expect(onReply).toHaveBeenCalled());
-
-  expect(body).toContain('c-42');
-  expect(onReply).toHaveBeenCalledTimes(1);
-  expect(onReply).toHaveBeenCalledWith({ text: 'Demo response: Hello', stopped: false });
-});
-
-it('reports a fake reply Stopped after some text as Stopped, even when the client stops reading', async () => {
+it('ends a fake reply Stopped after some text where it is, with an abort', async () => {
   vi.stubEnv('CHAT_FAKE_PROVIDER', 'true');
   vi.stubEnv('CHAT_FAKE_PROVIDER_DELAY_MS', '50');
-  const onReply = vi.fn(async () => {});
   const controller = new AbortController();
 
-  const response = await streamAssistant({ instructions: 'Demo', messages: [hello], conversationId: 'c-1', signal: controller.signal, onReply });
-  const reader = response.body!.getReader();
-  let received = '';
-  while (!received.includes('Demo response: ')) received += new TextDecoder().decode((await reader.read()).value);
+  const stream = await streamAssistant({ instructions: 'Demo', messages: [hello], signal: controller.signal });
+  const reader = stream.getReader();
+  const chunks: UIMessageChunk[] = [];
+  while (textOf(chunks) !== 'Demo response: ') chunks.push((await reader.read()).value!);
   controller.abort();
-  await reader.cancel();
+  for (let next = await reader.read(); !next.done; next = await reader.read()) chunks.push(next.value);
 
-  await vi.waitFor(() => expect(onReply).toHaveBeenCalled());
-  expect(onReply).toHaveBeenCalledWith({ text: 'Demo response: ', stopped: true });
+  expect(textOf(chunks)).toBe('Demo response: ');
+  expect(chunks.at(-1)).toEqual({ type: 'abort' });
 });
 
-it('reports nothing when the fake reply is Stopped before any text', async () => {
+it('sends no text when the fake reply is Stopped before any', async () => {
   vi.stubEnv('CHAT_FAKE_PROVIDER', 'true');
   vi.stubEnv('CHAT_FAKE_PROVIDER_DELAY_MS', '50');
-  const onReply = vi.fn(async () => {});
   const controller = new AbortController();
 
-  const response = await streamAssistant({ instructions: 'Demo', messages: [hello], conversationId: 'c-1', signal: controller.signal, onReply });
+  const stream = await streamAssistant({ instructions: 'Demo', messages: [hello], signal: controller.signal });
   controller.abort();
-  await response.body!.cancel();
-  await new Promise(resolve => setTimeout(resolve, 150));
+  const chunks = await readAll(stream);
 
-  expect(onReply).not.toHaveBeenCalled();
+  expect(textOf(chunks)).toBe('');
+  expect(chunks.at(-1)).toEqual({ type: 'abort' });
 });

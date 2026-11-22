@@ -10,9 +10,8 @@ import * as schema from '../src/lib/schema';
 import { createWorkspaceQueries } from '../src/lib/workspaces';
 import { createInvitationStore } from '../src/lib/invitation-store';
 import { generateInvitationToken, hashInvitationToken } from '../src/lib/invitations';
-import { createConversationQueries } from '../src/lib/conversation-queries';
+import { createConversationStore } from '../src/lib/conversations';
 import { createConversationListHandler } from '../src/lib/conversation-handlers';
-import { createConversationTurns } from '../src/lib/conversation-turns';
 import { randomUUID } from 'node:crypto';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -474,7 +473,7 @@ async function withConversations(rows: Array<{ id: string; workspaceId: string; 
 }
 
 it.skipIf(!testDatabaseUrl)("lists only the Session User's Conversations in that Workspace, newest activity first", async () => {
-  const queries = createConversationQueries(drizzle(connection!, { schema }));
+  const queries = createConversationStore(drizzle(connection!, { schema }));
   const a = await userId(emailA!);
   const b = await userId(emailB!);
   await withExtraUsers(['conv-list-member'], 'workspace-a', ['member'], async () => {
@@ -500,8 +499,8 @@ it.skipIf(!testDatabaseUrl)("lists only the Session User's Conversations in that
 /** The list endpoint with the real store, as `who` (the Session is faked; the database is real). */
 function listAs(who: string) {
   const list = createConversationListHandler({
-    authorize: async (workspaceId: string) => ({ kind: 'authorized', userId: who, workspace: { id: workspaceId } }),
-    queries: createConversationQueries(drizzle(connection!, { schema })),
+    authorize: async (workspaceId: string) => ({ kind: 'authorized', userId: who, workspace: { id: workspaceId, name: 'Workspace A', assistantInstructions: 'x' } }),
+    queries: createConversationStore(drizzle(connection!, { schema })),
   });
   return async (cursor?: string) => {
     const query = cursor === undefined ? '' : `?cursor=${encodeURIComponent(cursor)}`;
@@ -563,7 +562,7 @@ it.skipIf(!testDatabaseUrl)('rejects a malformed cursor with 400 and answers a c
 });
 
 it.skipIf(!testDatabaseUrl)('opens a Conversation with its messages in stored order, and only for the User who owns it', async () => {
-  const queries = createConversationQueries(drizzle(connection!, { schema }));
+  const queries = createConversationStore(drizzle(connection!, { schema }));
   const a = await userId(emailA!);
   const b = await userId(emailB!);
   await withExtraUsers(['conv-open-member', 'conv-open-owner'], 'workspace-a', ['member', 'owner'], async () => {
@@ -600,7 +599,7 @@ it.skipIf(!testDatabaseUrl)('opens a Conversation with its messages in stored or
 });
 
 it.skipIf(!testDatabaseUrl)("deletes only the Session User's own Conversation, and its messages with it", async () => {
-  const queries = createConversationQueries(drizzle(connection!, { schema }));
+  const queries = createConversationStore(drizzle(connection!, { schema }));
   const a = await userId(emailA!);
   await withExtraUsers(['conv-delete-member'], 'workspace-a', ['member'], async () => {
     await withConversations([
@@ -627,14 +626,14 @@ it.skipIf(!testDatabaseUrl)("deletes only the Session User's own Conversation, a
 
 it.skipIf(!testDatabaseUrl)("keeps Demo user A's stored Conversation private to them, messages in turn order", async () => {
   const database = drizzle(connection!, { schema });
-  const queries = createConversationQueries(database);
+  const queries = createConversationStore(database);
   const a = await userId(emailA!);
   const b = await userId(emailB!);
   const id = randomUUID();
   await withExtraUsers(['conv-private-member'], 'workspace-a', ['member'], async () => {
     try {
       // Saved through the real write path; each turn's User message and reply share one timestamp.
-      const turns = createConversationTurns(database);
+      const turns = createConversationStore(database);
       const first = new Date('2030-03-01T09:00:00Z');
       const second = new Date('2030-03-01T09:05:00Z');
       await turns.saveTurn({ conversationId: id, userId: a, workspaceId: 'workspace-a', userText: 'Draft the launch note', assistantText: 'Here is a draft.', stopped: false, receivedAt: first, savedAt: first });
@@ -670,8 +669,8 @@ it.skipIf(!testDatabaseUrl)('deleting a Workspace removes its Conversations and 
     await connection!`INSERT INTO workspaces (id, name, assistant_instructions) VALUES (${workspaceId}, 'Cascade', 'Test')`;
     await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES (${`m-${workspaceId}`}, ${a}, ${workspaceId}, 'owner')`;
     const now = new Date();
-    await createConversationTurns(database).saveTurn({ conversationId: id, userId: a, workspaceId, userText: 'Hello', assistantText: 'Hi', stopped: false, receivedAt: now, savedAt: now });
-    await expect(createConversationQueries(database).findConversation(a, workspaceId, id)).resolves.toMatchObject({ messages: [{ content: 'Hello' }, { content: 'Hi' }] });
+    await createConversationStore(database).saveTurn({ conversationId: id, userId: a, workspaceId, userText: 'Hello', assistantText: 'Hi', stopped: false, receivedAt: now, savedAt: now });
+    await expect(createConversationStore(database).findConversation(a, workspaceId, id)).resolves.toMatchObject({ messages: [{ content: 'Hello' }, { content: 'Hi' }] });
 
     await connection!`DELETE FROM workspaces WHERE id = ${workspaceId}`;
 

@@ -9,7 +9,7 @@ const { authorizeWorkspace, listConversations, redirect, notFound } = vi.hoisted
 
 vi.mock('next/navigation', () => ({ redirect, notFound }));
 vi.mock('../src/lib/authorization', () => ({ authorizeWorkspace }));
-vi.mock('../src/lib/conversation-queries', () => ({ listConversations }));
+vi.mock('../src/lib/conversations', () => ({ listConversations }));
 vi.mock('../src/app/w/[workspaceId]/chat', () => ({ default: () => null }));
 
 import Workspace from '../src/app/w/[workspaceId]/page';

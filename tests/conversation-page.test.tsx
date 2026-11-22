@@ -10,7 +10,7 @@ const { authorizeWorkspace, findConversation, listConversations, redirect, notFo
 
 vi.mock('next/navigation', () => ({ redirect, notFound }));
 vi.mock('../src/lib/authorization', () => ({ authorizeWorkspace }));
-vi.mock('../src/lib/conversation-queries', () => ({ findConversation, listConversations }));
+vi.mock('../src/lib/conversations', () => ({ findConversation, listConversations }));
 vi.mock('../src/app/w/[workspaceId]/chat', () => ({ default: () => null }));
 
 import ConversationPage from '../src/app/w/[workspaceId]/c/[conversationId]/page';

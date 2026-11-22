@@ -1,6 +1,6 @@
 import { authorizeWorkspace } from '@/lib/authorization';
 import { createConversationDeleteHandler } from '@/lib/conversation-handlers';
-import { deleteConversation } from '@/lib/conversation-queries';
+import { deleteConversation } from '@/lib/conversations';
 
 const remove = createConversationDeleteHandler({ authorize: authorizeWorkspace, queries: { deleteConversation } });
 

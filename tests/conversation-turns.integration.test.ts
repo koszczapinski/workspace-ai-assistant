@@ -3,7 +3,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../src/lib/schema';
-import { createConversationTurns } from '../src/lib/conversation-turns';
+import { createConversationStore } from '../src/lib/conversations';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const connection = testDatabaseUrl ? postgres(testDatabaseUrl, { max: 5 }) : null;
@@ -35,7 +35,10 @@ afterAll(async () => {
   await connection.end();
 });
 
-const store = () => createConversationTurns(drizzle(connection!, { schema }));
+const store = () => createConversationStore(drizzle(connection!, { schema }));
+/** The stored transcript without generated ids and timestamps. */
+const transcript = async (messages: Promise<Array<{ role: string; content: string; stopped: boolean }> | null>) =>
+  (await messages)?.map(({ role, content, stopped }) => ({ role, content, stopped })) ?? null;
 const at = (seconds: number) => new Date(Date.UTC(2030, 0, 1, 12, 0, seconds));
 
 async function conversationRow(id: string) {
@@ -52,7 +55,7 @@ it.skipIf(!testDatabaseUrl)('stores a first turn as a new Conversation the owner
     receivedAt: at(0), savedAt: at(0),
   });
 
-  await expect(store().history(owner, workspace, id, 30)).resolves.toEqual([
+  expect(await transcript(store().history(owner, workspace, id, 30))).toEqual([
     { role: 'user', content: '  Plan   the\nlaunch  ', stopped: false },
     { role: 'assistant', content: 'Here is a plan.', stopped: false },
   ]);
@@ -99,13 +102,13 @@ it.skipIf(!testDatabaseUrl)('continues a Conversation: keeps the title, moves up
   });
 
   expect(await conversationRow(id)).toEqual({ title: 'x'.repeat(80), updatedAt: at(20) });
-  await expect(s.history(owner, workspace, id, 30)).resolves.toEqual([
+  expect(await transcript(s.history(owner, workspace, id, 30))).toEqual([
     { role: 'user', content: 'x'.repeat(100), stopped: false },
     { role: 'assistant', content: 'First', stopped: false },
     { role: 'user', content: 'Second question', stopped: false },
     { role: 'assistant', content: 'Partial', stopped: true },
   ]);
-  await expect(s.history(owner, workspace, id, 3)).resolves.toEqual([
+  expect(await transcript(s.history(owner, workspace, id, 3))).toEqual([
     { role: 'assistant', content: 'First', stopped: false },
     { role: 'user', content: 'Second question', stopped: false },
     { role: 'assistant', content: 'Partial', stopped: true },

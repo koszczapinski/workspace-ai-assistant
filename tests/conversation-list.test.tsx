@@ -5,6 +5,7 @@ import type { ComponentProps } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ChatTransport, UIMessage, UIMessageChunk } from 'ai';
 import Chat from '../src/app/w/[workspaceId]/chat';
+import { createChatTransport } from '../src/lib/chat-transport';
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn() }));
 vi.mock('next/navigation', () => ({ useRouter: () => router }));
@@ -41,13 +42,15 @@ function controlledTransport() {
     transport,
     requests,
     abortSignals,
-    async reply(conversationId: string, text: string, request = controllers.length - 1) {
+    /** A finished reply; like the server, it names the Conversation only when its turn was saved. */
+    async reply(conversationId: string | null, text: string, request = controllers.length - 1) {
       await act(async () => {
         const controller = controllers[request]!;
-        controller.enqueue({ type: 'start', messageMetadata: { conversationId } });
+        controller.enqueue({ type: 'start' });
         controller.enqueue({ type: 'text-start', id: `t-${request}` });
         controller.enqueue({ type: 'text-delta', id: `t-${request}`, delta: text });
         controller.enqueue({ type: 'text-end', id: `t-${request}` });
+        if (conversationId) controller.enqueue({ type: 'message-metadata', messageMetadata: { conversationId } });
         controller.enqueue({ type: 'finish' });
         controller.close();
       });
@@ -167,6 +170,47 @@ describe('the Conversation list in the Workspace', () => {
     await send('A different topic');
     await stream.reply('conv-2', 'Okay');
     await waitFor(() => expect(within(conversationList()).getAllByRole('link').map(link => link.textContent)).toEqual(['Launch plan', 'Newer']));
+  });
+
+  it('never lists, addresses or continues a Conversation whose turn was not saved', async () => {
+    const stream = controlledTransport();
+    render(<Chat id="workspace-a" name="Workspace A" transport={stream.transport} conversations={list()} />);
+
+    await send('First question');
+    await waitFor(() => expect(stream.requests).toHaveLength(1));
+    await stream.reply(null, 'An answer that was not stored');
+
+    expect(screen.getByText('An answer that was not stored')).toBeInTheDocument();
+    expect(within(conversationList()).getByText('No conversations yet')).toBeVisible();
+    expect(window.location.pathname).toBe('/w/workspace-a');
+    await send('Second question');
+    await waitFor(() => expect(stream.requests).toHaveLength(2));
+    expect(stream.requests[1]!.body).toBeUndefined();
+  });
+
+  it('starts over with the draft kept when the open Conversation no longer exists', async () => {
+    window.history.replaceState(null, '', '/w/workspace-a/c/conv-1');
+    const bodies: Array<Record<string, unknown>> = [];
+    const fetch = vi.fn(async (_url: RequestInfo | URL, init?: RequestInit) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return Response.json({ error: 'Not found' }, { status: 404 });
+    });
+    render(<Chat id="workspace-a" name="Workspace A" transport={createChatTransport('workspace-a', fetch)}
+      conversations={list('Launch plan', 'Pricing')}
+      conversation={{ id: 'conv-1', title: 'Launch plan', messages: [text('m1', 'user', 'Plan the launch')] }} />);
+
+    await send('And then?');
+
+    await waitFor(() => expect(within(conversationList()).queryByRole('link', { name: 'Launch plan' })).not.toBeInTheDocument());
+    expect(bodies[0]).toMatchObject({ conversationId: 'conv-1' });
+    expect(await screen.findByRole('alert')).toHaveTextContent('That conversation is no longer available');
+    expect(screen.queryByText('Plan the launch')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Message')).toHaveValue('And then?');
+    expect(window.location.pathname).toBe('/w/workspace-a');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(bodies).toHaveLength(2));
+    expect(bodies[1]).not.toHaveProperty('conversationId');
   });
 
   it('cancels the active response when switching Conversations, so late text never shows', async () => {

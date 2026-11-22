@@ -4,11 +4,12 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ArrowLeft, Check, CircleAlert, LoaderCircle, MessagesSquare, Send, Sparkles, Square, SquarePen, Trash2, Users } from 'lucide-react';
 import { useChat } from '@ai-sdk/react';
-import type { ChatTransport, UIMessage } from 'ai';
+import { APICallError, type ChatTransport, type UIMessage } from 'ai';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BrandLogo } from '@/components/brand-logo';
+import { chatMessageMetadata, messageText } from '@/lib/chat-message';
 import { createChatTransport } from '@/lib/chat-transport';
 import { conversationTitle } from '@/lib/conversation-title';
 import type { ConversationListView, OpenConversation } from '@/lib/conversation-view';
@@ -28,7 +29,7 @@ type ChatProps = {
   name: string;
   isOwner?: boolean;
   transport?: ChatTransport<UIMessage>;
-  /** The first page of the Session User's Conversations in this Workspace. */
+  /** The first page of the signed-in User's Conversations in this Workspace. */
   conversations?: ConversationListView;
   /** The stored Conversation the address opens; absent for a new one. */
   conversation?: OpenConversation;
@@ -47,9 +48,11 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
   const [list, setList] = useState(conversations);
   const [opening, setOpening] = useState(conversation);
   const [openId, setOpenId] = useState(conversation?.id ?? null);
-  // Each new chat session (new Conversation, switch, delete of the open one) remounts the chat,
+  // Each change of the open Conversation (new, switch, delete of the open one) remounts the pane,
   // which aborts its request so late chunks have nowhere to land.
-  const [session, setSession] = useState(0);
+  const [conversationKey, setConversationKey] = useState(0);
+  // Handed to the next pane when the open Conversation turned out to be gone.
+  const [restart, setRestart] = useState<{ draft: string } | null>(null);
   const [listOpen, setListOpen] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
@@ -61,23 +64,25 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
     setList(conversations);
     setOpening(conversation);
     setOpenId(conversation?.id ?? null);
-    setSession(value => value + 1);
+    setRestart(null);
+    setConversationKey(value => value + 1);
   }
 
   const workspacePath = `/w/${id}`;
   const conversationPath = (conversationId: string) => `/w/${id}/c/${conversationId}`;
 
-  function startSession(next: OpenConversation | undefined, nextOpenId: string | null) {
+  function openPane(next: OpenConversation | undefined, nextOpenId: string | null) {
     setOpening(next);
     setOpenId(nextOpenId);
-    setSession(value => value + 1);
+    setRestart(null);
+    setConversationKey(value => value + 1);
     setListOpen(false);
   }
 
   // Navigating (not only rewriting the address) keeps the router's page in step with the address,
   // so a later link back to the Conversation that was open loads it again.
   function startNewConversation(history: 'push' | 'replace') {
-    startSession(undefined, null);
+    openPane(undefined, null);
     router[history](workspacePath);
   }
 
@@ -92,6 +97,18 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
     if (window.location.pathname !== conversationPath(conversationId)) {
       window.history.replaceState(null, '', conversationPath(conversationId));
     }
+  }
+
+  /**
+   * The server no longer has the open Conversation (deleted elsewhere, for example): drop it from the
+   * list and the address and start a new one with the unsent text back in the composer. The address is
+   * rewritten in place, like a newly saved Conversation's, so no navigation remounts the new pane.
+   */
+  function conversationGone(conversationId: string, draft: string) {
+    setList(previous => ({ ...previous, conversations: previous.conversations.filter(entry => entry.id !== conversationId) }));
+    openPane(undefined, null);
+    setRestart({ draft });
+    window.history.replaceState(null, '', workspacePath);
   }
 
   async function loadMore() {
@@ -155,7 +172,7 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
                       aria-current={current ? 'page' : undefined}
                       className={`min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-sm ${current ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} ${focusRing}`}
                       onClick={() => {
-                        if (!current) startSession(undefined, entry.id);
+                        if (!current) openPane(undefined, entry.id);
                       }}
                     >
                       {entry.title}
@@ -217,41 +234,49 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
           </div>
         </header>
 
-        <ChatSession
-          key={session}
+        <ConversationPane
+          key={conversationKey}
           id={id}
           name={name}
           transport={transport}
           conversation={opening}
+          restart={restart}
           onSaved={saved}
+          onGone={conversationGone}
         />
       </div>
     </main>
   );
 }
 
-type ChatSessionProps = {
+type ConversationPaneProps = {
   id: string;
   name: string;
   transport?: ChatTransport<UIMessage>;
   conversation?: OpenConversation;
+  /** Set when this pane replaces a Conversation that turned out to be gone. */
+  restart: { draft: string } | null;
   /** A turn of `conversationId` was stored; `title` is what the server titles it with. */
   onSaved: (conversationId: string, title: string, options: { open: boolean }) => void;
+  /** Continuing `conversationId` found no such Conversation; `draft` is the message that was not sent. */
+  onGone: (conversationId: string, draft: string) => void;
 };
 
-function ChatSession({ id, name, transport, conversation, onSaved }: ChatSessionProps) {
-  const [input, setInput] = useState('');
+/** One open Conversation: its messages, the live response and the composer. */
+function ConversationPane({ id, name, transport, conversation, restart, onSaved, onGone }: ConversationPaneProps) {
+  const [input, setInput] = useState(restart?.draft ?? '');
   const [stoppedMessageId, setStoppedMessageId] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
   const [elapsedMs, setElapsedMs] = useState<number | null>(null);
   const [reasoningOpen, setReasoningOpen] = useState<Record<string, boolean>>({});
   const responseStartedAt = useRef<number | null>(null);
   const sendInProgress = useRef(false);
-  // The server names the Conversation in each reply; once a reply with text has ended, later sends continue it.
+  // The server names the Conversation in a reply only once that turn is stored; later sends continue it.
   const conversationId = useRef<string | null>(conversation?.id ?? null);
+  const lastSent = useRef('');
   // An opened Conversation keeps its title; a new one is titled by the message its first stored turn began with.
   const title = useRef(conversation?.title ?? '');
-  // False once this session is replaced; its aborted reply may still finish but must not take over the screen.
+  // False once this pane is replaced; its aborted reply may still finish but must not take over the screen.
   const mounted = useRef(true);
   useEffect(() => {
     mounted.current = true;
@@ -263,19 +288,19 @@ function ChatSession({ id, name, transport, conversation, onSaved }: ChatSession
     messages: conversation?.messages,
     transport: chatTransport,
     onFinish: ({ message, isError }) => {
-      const named = (message.metadata as { conversationId?: unknown } | undefined)?.conversationId;
-      const hasText = message.parts.some(part => part.type === 'text' && part.text.length > 0);
-      if (isError || !hasText || typeof named !== 'string') return;
+      const named = chatMessageMetadata(message).conversationId;
+      if (isError || !named || !messageText(message)) return;
       if (mounted.current) conversationId.current = named;
       onSaved(named, title.current, { open: mounted.current });
+    },
+    onError: error => {
+      // The 404 the chat endpoint gives a Conversation that is not (or no longer) this User's.
+      const gone = conversationId.current;
+      if (mounted.current && gone && APICallError.isInstance(error) && error.statusCode === 404) onGone(gone, lastSent.current);
     },
   });
   const conversationBody = () => (conversationId.current ? { body: { conversationId: conversationId.current } } : undefined);
   const active = status === 'submitted' || status === 'streaming';
-
-  useEffect(() => {
-    if (!active) sendInProgress.current = false;
-  }, [active]);
 
   useEffect(() => {
     if (!active && responseStartedAt.current !== null) {
@@ -286,7 +311,7 @@ function ChatSession({ id, name, transport, conversation, onSaved }: ChatSession
 
   const latestMessage = messages.at(-1);
   const currentResponse = latestMessage?.role === 'assistant' ? latestMessage : undefined;
-  const hasResponseText = currentResponse?.parts.some(part => part.type === 'text' && part.text.length > 0) ?? false;
+  const hasResponseText = currentResponse ? messageText(currentResponse).length > 0 : false;
   const usageLimit = error ? parseUsageLimit(error.message) : null;
   const activityTitle = error
     ? usageLimit ? usageLimitMessage(usageLimit, name) : `Error: ${error.message || 'Please try again.'}`
@@ -307,6 +332,11 @@ function ChatSession({ id, name, transport, conversation, onSaved }: ChatSession
             </div>
             <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">Start a conversation</h2>
             <p className="mt-2 max-w-sm text-sm leading-6 text-muted-foreground">Ask a question about {name} to get started.</p>
+            {restart && (
+              <p role="alert" className="mt-4 max-w-sm rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-foreground">
+                That conversation is no longer available. Your message is still in the box below; send it to start a new conversation.
+              </p>
+            )}
           </div>
         )}
         <div className="space-y-6">
@@ -380,7 +410,12 @@ function ChatSession({ id, name, transport, conversation, onSaved }: ChatSession
             setElapsedMs(null);
             setReasoningOpen({});
             if (!conversationId.current) title.current = conversationTitle(input);
-            sendMessage({ text: input.trim() }, conversationBody());
+            lastSent.current = input.trim();
+            // The request has ended, however it ended, so the composer accepts the next message. Waiting
+            // for `active` to flip instead misses a request that starts and ends without a render between.
+            void sendMessage({ text: lastSent.current }, conversationBody()).finally(() => {
+              sendInProgress.current = false;
+            });
             setInput('');
             setStoppedMessageId(null);
             setStopped(false);
@@ -425,5 +460,5 @@ function ChatSession({ id, name, transport, conversation, onSaved }: ChatSession
 }
 
 function isStoredStopped(message: UIMessage): boolean {
-  return (message.metadata as { stopped?: unknown } | undefined)?.stopped === true;
+  return chatMessageMetadata(message).stopped === true;
 }

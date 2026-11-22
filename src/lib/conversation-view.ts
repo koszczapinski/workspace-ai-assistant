@@ -1,6 +1,7 @@
 import type { UIMessage } from 'ai';
+import type { ChatMessageMetadata } from './chat-message';
 import { encodeConversationCursor } from './conversation-cursor';
-import type { ConversationPage, StoredMessage } from './conversation-queries';
+import type { ConversationPage, StoredMessage } from './conversations';
 
 /** One page of the Conversation list as the Workspace view and the list endpoint present it. */
 export type ConversationListView = {
@@ -20,10 +21,11 @@ export function toConversationListView(page: ConversationPage): ConversationList
 }
 
 export function toChatMessages(messages: StoredMessage[]): UIMessage[] {
+  const stopped: ChatMessageMetadata = { stopped: true };
   return messages.map(message => ({
     id: message.id,
     role: message.role,
     parts: [{ type: 'text', text: message.content }],
-    ...(message.stopped ? { metadata: { stopped: true } } : {}),
+    ...(message.stopped ? { metadata: stopped } : {}),
   }));
 }

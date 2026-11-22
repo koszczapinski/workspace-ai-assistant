@@ -1,22 +1,16 @@
+import type { MemberAccess } from './authorization';
 import { decodeConversationCursor } from './conversation-cursor';
-import type { createConversationQueries } from './conversation-queries';
+import type { ConversationStore } from './conversations';
 import { toConversationListView } from './conversation-view';
 
-/** Session-derived access to a Workspace; the User id is never taken from the request. */
-export type ConversationAccess =
-  | { kind: 'unavailable' }
-  | { kind: 'unauthenticated' }
-  | { kind: 'forbidden' }
-  | { kind: 'authorized'; userId: string; workspace: { id: string } };
-
-type ConversationQueries = ReturnType<typeof createConversationQueries>;
-type ConversationHandlerDeps<Q extends keyof ConversationQueries> = {
-  authorize: (workspaceId: string) => Promise<ConversationAccess>;
-  queries: Pick<ConversationQueries, Q>;
+type ConversationHandlerDeps<Q extends keyof ConversationStore> = {
+  /** Session-derived access to a Workspace; the User id is never taken from the request. */
+  authorize: (workspaceId: string) => Promise<MemberAccess>;
+  queries: Pick<ConversationStore, Q>;
 };
 
 /** The responses shared by every Conversation endpoint when the Session cannot use the Workspace. */
-function deniedResponse(access: Exclude<ConversationAccess, { kind: 'authorized' }>): Response {
+function deniedResponse(access: Exclude<MemberAccess, { kind: 'authorized' }>): Response {
   if (access.kind === 'unavailable') return Response.json({ error: 'Authentication unavailable' }, { status: 503 });
   if (access.kind === 'unauthenticated') return Response.json({ error: 'Unauthorized' }, { status: 401 });
   return Response.json({ error: 'Not found' }, { status: 404 });
