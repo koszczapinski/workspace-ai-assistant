@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { MemberAccess } from './authorization';
 import { decodeConversationCursor } from './conversation-cursor';
 import type { ConversationStore } from './conversations';
@@ -31,6 +32,27 @@ export function createConversationListHandler({ authorize, queries }: Conversati
 
     const page = await queries.listConversations(access.userId, access.workspace.id, after);
     return Response.json(toConversationListView(page));
+  };
+}
+
+/** A manual Title may be longer than the automatic one (80). Trimmed first; empty means "restore the automatic Title". */
+const renameBody = z.object({ title: z.string().transform(value => value.trim()).pipe(z.string().max(100)) });
+
+/**
+ * PATCH the Title of one of the Session User's Conversations. The User and Workspace come from
+ * authorization, never the body. Another User's Conversation and a missing one are the same 404.
+ */
+export function createConversationRenameHandler({ authorize, queries }: ConversationHandlerDeps<'renameConversation'>) {
+  return async function rename(request: Request, workspaceId: string, conversationId: string): Promise<Response> {
+    const access = await authorize(workspaceId);
+    if (access.kind !== 'authorized') return deniedResponse(access);
+
+    const body = renameBody.safeParse(await request.json().catch(() => undefined));
+    if (!body.success) return Response.json({ error: 'Title must be text of at most 100 characters' }, { status: 400 });
+
+    const title = await queries.renameConversation(access.userId, access.workspace.id, conversationId, body.data.title || null);
+    if (title === null) return Response.json({ error: 'Not found' }, { status: 404 });
+    return Response.json({ title });
   };
 }
 

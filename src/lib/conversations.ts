@@ -144,6 +144,32 @@ export function createConversationStore(database: typeof db) {
       });
     },
 
+    /**
+     * Sets the Title, or with `null` recomputes it from the first User message. Leaves `updated_at`
+     * alone, so list order is unchanged. Returns the stored Title, or null when the Conversation is
+     * not this User's in this Workspace.
+     */
+    async renameConversation(userId: string, workspaceId: string, conversationId: string, title: string | null): Promise<string | null> {
+      if (!database) return null;
+      const where = and(eq(conversations.id, conversationId), ownedBy(userId, workspaceId));
+      let next = title;
+      if (next === null) {
+        const [first] = await database.select({ content: messages.content }).from(messages)
+          .innerJoin(conversations, eq(conversations.id, messages.conversationId))
+          .where(and(where, eq(messages.role, 'user')))
+          .orderBy(asc(messages.createdAt), asc(messages.id))
+          .limit(1);
+        if (!first) return null;
+        next = conversationTitle(first.content);
+      }
+      // Set explicitly so no automatic "on update" behavior can ever move the Conversation in the list.
+      const renamed = await database.update(conversations)
+        .set({ title: next, updatedAt: sql`${conversations.updatedAt}` })
+        .where(where)
+        .returning({ title: conversations.title });
+      return renamed[0]?.title ?? null;
+    },
+
     /** Deletes the Conversation and, through the foreign key, its messages. False when it is not this User's in this Workspace. */
     async deleteConversation(userId: string, workspaceId: string, conversationId: string): Promise<boolean> {
       if (!database) return false;
@@ -159,4 +185,4 @@ export type ConversationStore = ReturnType<typeof createConversationStore>;
 
 export const conversationStore = createConversationStore(db);
 
-export const { listConversations, findConversation, deleteConversation } = conversationStore;
+export const { listConversations, findConversation, deleteConversation, renameConversation } = conversationStore;
