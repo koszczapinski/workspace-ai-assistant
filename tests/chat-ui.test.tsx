@@ -83,3 +83,37 @@ it('keeps the live status stable while streamed tokens update', async () => {
   expect(status).toHaveTextContent('Responding…');
   finishStream();
 });
+
+it('continues the Conversation the server named in its finished reply', async () => {
+  const bodies: Record<string, unknown>[] = [];
+  const transport = new DefaultChatTransport({
+    api: '/api/chat',
+    body: { workspaceId: 'workspace-a' },
+    fetch: async (_url, init) => {
+      bodies.push(JSON.parse(String(init?.body)));
+      return createUIMessageStreamResponse({
+        stream: createUIMessageStream({
+          execute: async ({ writer }) => {
+            writer.write({ type: 'start', messageMetadata: { conversationId: 'conversation-9' } });
+            await new Promise(resolve => setTimeout(resolve, 20));
+            writer.write({ type: 'text-start', id: 'reply' });
+            writer.write({ type: 'text-delta', id: 'reply', delta: `Reply ${bodies.length}` });
+            writer.write({ type: 'text-end', id: 'reply' });
+          },
+        }),
+      });
+    },
+  });
+  render(<Chat id="workspace-a" name="Workspace A" transport={transport} />);
+
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'First' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await screen.findByText('Reply 1');
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'Stop response' })).toBeNull());
+  fireEvent.change(screen.getByLabelText('Message'), { target: { value: 'Second' } });
+  fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+  await screen.findByText('Reply 2');
+
+  expect(bodies[0]).not.toHaveProperty('conversationId');
+  expect(bodies[1]).toMatchObject({ workspaceId: 'workspace-a', conversationId: 'conversation-9' });
+});

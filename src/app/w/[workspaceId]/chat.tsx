@@ -33,10 +33,18 @@ function ChatSession({ id, name, isOwner, transport }: ChatProps) {
   const [reasoningOpen, setReasoningOpen] = useState<Record<string, boolean>>({});
   const responseStartedAt = useRef<number | null>(null);
   const sendInProgress = useRef(false);
+  // The server names the Conversation in each reply; once a reply with text has ended, later sends continue it.
+  const conversationId = useRef<string | null>(null);
   const { messages, sendMessage, status, stop, error, regenerate, clearError } = useChat({
     id,
     transport: transport ?? new DefaultChatTransport({ api: '/api/chat', body: { workspaceId: id } }),
+    onFinish: ({ message, isError }) => {
+      const named = (message.metadata as { conversationId?: unknown } | undefined)?.conversationId;
+      const hasText = message.parts.some(part => part.type === 'text' && part.text.length > 0);
+      if (!isError && hasText && typeof named === 'string') conversationId.current = named;
+    },
   });
+  const conversationBody = () => (conversationId.current ? { body: { conversationId: conversationId.current } } : undefined);
   const active = status === 'submitted' || status === 'streaming';
 
   useEffect(() => {
@@ -164,7 +172,7 @@ function ChatSession({ id, name, isOwner, transport }: ChatProps) {
             responseStartedAt.current = Date.now();
             setElapsedMs(null);
             setReasoningOpen({});
-            sendMessage({ text: input.trim() });
+            sendMessage({ text: input.trim() }, conversationBody());
             setInput('');
             setStoppedMessageId(null);
             setStopped(false);
@@ -197,7 +205,7 @@ function ChatSession({ id, name, isOwner, transport }: ChatProps) {
             responseStartedAt.current = Date.now();
             setElapsedMs(null);
             setStopped(false);
-            regenerate();
+            regenerate(conversationBody());
           }}>Retry</Button>
         )}
         <Button type="submit" size="icon" className="size-11 rounded-full" aria-label="Send" disabled={active || !input.trim()}>
