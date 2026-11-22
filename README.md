@@ -4,15 +4,15 @@ A private portfolio MVP demonstrating authenticated, workspace-isolated AI chat 
 
 ## Local setup
 
-Requirements: Node.js 20+, PostgreSQL, and a local database named `workspace_ai`.
+Requirements: Node.js 20+, PostgreSQL listening on localhost port 5433 (the port in `.env.example`), and a local database named `workspace_ai`.
 
-1. Copy `.env.example` to `.env.local`.
-2. Set `DATABASE_URL`, a random `BETTER_AUTH_SECRET` with at least 32 characters, and distinct synthetic passwords for `DEMO_USER_A_PASSWORD` and `DEMO_USER_B_PASSWORD`. The example supplies demo email addresses.
+1. Copy `.env.example` to `.env`. If you already have a `.env`, add `APP_ENV=development` to it and point `DATABASE_URL` at port 5433.
+2. Keep `APP_ENV=development` (one of `development`, `test` or `production`; see `docs/adr/0002-explicit-app-env.md`). `db:migrate` and `db:seed` refuse to run unless it is `development` or `test`, and with `development` they require a localhost `DATABASE_URL`. Set `DATABASE_URL`, a random `BETTER_AUTH_SECRET` with at least 32 characters, and distinct synthetic passwords for `DEMO_USER_A_PASSWORD` and `DEMO_USER_B_PASSWORD`. The example supplies demo email addresses.
 3. Install dependencies and prepare the database:
 
    ```sh
    npm ci
-   createdb workspace_ai
+   createdb -h localhost -p 5433 workspace_ai
    npm run db:migrate
    npm run db:seed
    ```
@@ -35,9 +35,9 @@ npm run test:e2e
 npm run build
 ```
 
-Unit and route tests use controlled streams and fake adapters, so they require no AI key or database. Vitest loads the local Next.js environment files. The authorization integration tests run when `TEST_DATABASE_URL` is set; it must point to a migrated database named exactly `workspace_ai_test`. They run the seed against that database, verify workspace membership and credential account IDs, and sign in both demo users through Better Auth. These tests write only to the dedicated test database, so never point `TEST_DATABASE_URL` at a development or production database you care about. The Playwright journey needs the same dedicated `workspace_ai_test` PostgreSQL database with the schema and demo seed applied (global setup refuses any other database, because teardown deletes rows), plus a Chromium browser installed (`npx playwright install chromium`). It logs in as User A, opens Northstar Studio, sends a message, and observes the streamed fake response; another journey reloads and still sees that Conversation. Global teardown deletes the Demo users' Conversations created during the run, so the run leaves no rows behind. Repeated runs within one minute can reach the per-minute Usage limit for User A; wait a minute between runs. Configure the Playwright environment with `DATABASE_URL`, `BETTER_AUTH_SECRET`, both demo emails, and both demo passwords before starting `npm run test:e2e`. Use a dedicated test database; never point it at a development or production database you care about.
+Unit and route tests use controlled streams and fake adapters, so they require no AI key or database. Vitest loads the local Next.js environment files. Integration tests and Playwright need `APP_ENV=test`: Vitest and the Playwright config set it, and the shared guard then refuses any database other than `workspace_ai_test`. The authorization integration tests run when `TEST_DATABASE_URL` is set; it must point to a migrated database named exactly `workspace_ai_test`. They run the seed against that database, verify workspace membership and credential account IDs, and sign in both demo users through Better Auth. These tests write only to the dedicated test database, so never point `TEST_DATABASE_URL` at a development or production database you care about. The Playwright journey needs the same dedicated `workspace_ai_test` PostgreSQL database with the schema and demo seed applied (global setup refuses any other database, because teardown deletes rows), plus a Chromium browser installed (`npx playwright install chromium`). It logs in as User A, opens Northstar Studio, sends a message, and observes the streamed fake response; another journey reloads and still sees that Conversation. Global teardown deletes the Demo users' Conversations created during the run, so the run leaves no rows behind. Repeated runs within one minute can reach the per-minute Usage limit for User A; wait a minute between runs. Configure the Playwright environment with `DATABASE_URL`, `BETTER_AUTH_SECRET`, both demo emails, and both demo passwords before starting `npm run test:e2e`. Use a dedicated test database; never point it at a development or production database you care about.
 
-CI runs these checks on pull requests and pushes to `main`. Its PostgreSQL 16 service uses a fresh `workspace_ai_test` database. Demo passwords and the Better Auth secret in CI are synthetic job-local values. `CHAT_FAKE_PROVIDER=true` selects the deterministic fake stream only outside production; `CHAT_FAKE_PROVIDER_DELAY_MS` controls its pause before each response chunk (default `120` ms). CI supplies no AI key or production credentials.
+CI runs these checks on pull requests and pushes to `main`. Its PostgreSQL 16 service uses a fresh `workspace_ai_test` database. Demo passwords and the Better Auth secret in CI are synthetic job-local values. `CHAT_FAKE_PROVIDER=true` selects the deterministic fake stream only when `APP_ENV` is `development` or `test` (with `production` or no `APP_ENV`, the real provider is used); `CHAT_FAKE_PROVIDER_DELAY_MS` controls its pause before each response chunk (default `120` ms). CI supplies no AI key or production credentials.
 
 ## Usage limits
 

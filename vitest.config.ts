@@ -6,5 +6,5 @@ loadEnvConfig(process.cwd());
 
 export default defineConfig({
   resolve: { alias: { '@': path.resolve(__dirname, 'src') } },
-  test: { environment: 'node', include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'] },
+  test: { env: { APP_ENV: 'test' }, environment: 'node', include: ['tests/**/*.test.ts', 'tests/**/*.test.tsx'] },
 });

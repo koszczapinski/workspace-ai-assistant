@@ -36,6 +36,14 @@ Keep these responsibilities separate:
 
 The server is the only authority for authentication and workspace access. Do not treat client-side filtering, a submitted `userId`, or assistant instructions as an authorization mechanism. Secrets stay on the server. Do not commit credentials or provider keys.
 
+## Database safety
+
+See `docs/adr/0002-explicit-app-env.md`.
+
+- Run `db:migrate`, `db:seed` and destructive SQL (DELETE, TRUNCATE, DROP) yourself only when `APP_ENV` is `development` or `test` and `DATABASE_URL` points to localhost. In every other case, ask the owner first.
+- Migrations are additive (expand/contract). A rollback reverts code only; tables and columns that hold data stay.
+- Never write production credentials into any `.env*` file.
+
 ## State
 
 `useChat` owns the conversation and stream. Changing workspace or signing out must cancel any active request and clear messages, partial output, and errors.

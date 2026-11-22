@@ -2,6 +2,7 @@ import { loadEnvConfig } from '@next/env';
 import { createHash } from 'node:crypto';
 import { hashPassword } from 'better-auth/crypto';
 import postgres from 'postgres';
+import { assertPostgresOperationAllowed } from '../src/lib/environment-guard';
 
 loadEnvConfig(process.cwd());
 
@@ -33,10 +34,8 @@ async function main(): Promise<void> {
   ] as const;
 
   try {
+    await assertPostgresOperationAllowed(sql, databaseUrl, ['development', 'test']);
     await sql.begin(async transaction => {
-      // Only memberships for these two deterministic demo workspaces are reconciled.
-      await transaction`DELETE FROM memberships WHERE workspace_id IN ('workspace-a', 'workspace-b')`;
-
       for (const demo of demoUsers) {
         const userId = `demo-${demo.key}-${createHash('sha256').update(demo.email).digest('hex').slice(0, 16)}`;
         const hashedPassword = await hashPassword(demo.password);
@@ -59,6 +58,7 @@ async function main(): Promise<void> {
         await transaction`
           INSERT INTO memberships (id, user_id, workspace_id, role)
           VALUES (${`${user.id}-membership`}, ${user.id}, ${demo.workspaceId}, 'owner')
+          ON CONFLICT (user_id, workspace_id) DO UPDATE SET role = 'owner'
         `;
         const [existingCredential] = await transaction<{ id: string }[]>`
           UPDATE account SET account_id = ${user.id}, password = ${hashedPassword}

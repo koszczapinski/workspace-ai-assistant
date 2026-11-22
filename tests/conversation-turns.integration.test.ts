@@ -3,6 +3,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../src/lib/schema';
+import { assertPostgresOperationAllowed } from '../src/lib/environment-guard';
 import { createConversationStore } from '../src/lib/conversations';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -12,14 +13,12 @@ const owner = `${runId}-owner`;
 const other = `${runId}-other`;
 const workspace = `${runId}-ws`;
 const otherWorkspace = `${runId}-ws2`;
+let guardPassed = false;
 
 beforeAll(async () => {
   if (!connection) return;
-  if (new URL(testDatabaseUrl!).pathname !== '/workspace_ai_test') {
-    throw new Error('TEST_DATABASE_URL must point to the dedicated workspace_ai_test database');
-  }
-  const [{ databaseName }] = await connection<{ databaseName: string }[]>`SELECT current_database() AS "databaseName"`;
-  expect(databaseName).toBe('workspace_ai_test');
+  await assertPostgresOperationAllowed(connection, testDatabaseUrl!, ['test']);
+  guardPassed = true;
   for (const id of [owner, other]) {
     await connection`INSERT INTO "user" (id, name, email) VALUES (${id}, ${id}, ${`${id}@example.test`})`;
   }
@@ -30,8 +29,11 @@ beforeAll(async () => {
 
 afterAll(async () => {
   if (!connection) return;
-  await connection`DELETE FROM workspaces WHERE id IN (${workspace}, ${otherWorkspace})`;
-  await connection`DELETE FROM "user" WHERE id IN (${owner}, ${other})`;
+  // A refused guard means this may not be the test database: close without deleting anything.
+  if (guardPassed) {
+    await connection`DELETE FROM workspaces WHERE id IN (${workspace}, ${otherWorkspace})`;
+    await connection`DELETE FROM "user" WHERE id IN (${owner}, ${other})`;
+  }
   await connection.end();
 });
 

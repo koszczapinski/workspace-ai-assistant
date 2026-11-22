@@ -3,6 +3,9 @@ import { loadEnvConfig } from '@next/env';
 
 loadEnvConfig(process.cwd());
 
+// The journeys store and delete rows, so the global setup, teardown and web server always run as test (ADR-0002).
+process.env.APP_ENV = 'test';
+
 const baseURL = 'http://localhost:3000';
 
 export default defineConfig({

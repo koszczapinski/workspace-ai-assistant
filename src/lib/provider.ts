@@ -7,6 +7,7 @@ import {
   type UIMessageChunk,
 } from 'ai';
 import { messageText } from './chat-message';
+import { isNonProductionAppEnv } from './environment-guard';
 
 export function createConfiguredOpenAIModel() {
   const key = process.env.OPENAI_API_KEY;
@@ -62,7 +63,8 @@ function streamFakeAssistant(input: AssistantInput): AssistantStream {
 
 /** Provider adapter: owns model configuration and translates browser messages for the AI SDK. */
 export async function streamAssistant(input: AssistantInput): Promise<AssistantStream> {
-  if (process.env.NODE_ENV !== 'production' && process.env.CHAT_FAKE_PROVIDER === 'true') {
+  // Only development and test may use the fake provider; production and a missing APP_ENV never do (ADR-0002).
+  if (isNonProductionAppEnv(process.env.APP_ENV) && process.env.CHAT_FAKE_PROVIDER === 'true') {
     return streamFakeAssistant(input);
   }
 
