@@ -596,3 +596,29 @@ it.skipIf(!testDatabaseUrl)('opens a Conversation with its messages in stored or
     });
   });
 });
+
+it.skipIf(!testDatabaseUrl)("deletes only the Session User's own Conversation, and its messages with it", async () => {
+  const queries = createConversationQueries(drizzle(connection!, { schema }));
+  const a = await userId(emailA!);
+  await withExtraUsers(['conv-delete-member'], 'workspace-a', ['member'], async () => {
+    await withConversations([
+      { id: 'conv-delete-mine', workspaceId: 'workspace-a', userId: a, updatedAt: '2030-01-01T00:00:00Z' },
+      { id: 'conv-delete-theirs', workspaceId: 'workspace-a', userId: 'conv-delete-member', updatedAt: '2030-01-01T00:00:00Z' },
+    ], async () => {
+      await connection!`INSERT INTO messages (id, conversation_id, role, content) VALUES
+        ('m-delete-mine', 'conv-delete-mine', 'user', 'Mine'),
+        ('m-delete-theirs', 'conv-delete-theirs', 'user', 'Theirs')`;
+
+      // Another Member's Conversation, the wrong Workspace, and a missing id are all not found and delete nothing.
+      await expect(queries.deleteConversation(a, 'workspace-a', 'conv-delete-theirs')).resolves.toBe(false);
+      await expect(queries.deleteConversation(a, 'workspace-b', 'conv-delete-mine')).resolves.toBe(false);
+      await expect(queries.deleteConversation(a, 'workspace-a', 'no-such-conversation')).resolves.toBe(false);
+      await expect(queries.findConversation('conv-delete-member', 'workspace-a', 'conv-delete-theirs')).resolves
+        .toMatchObject({ messages: [{ content: 'Theirs' }] });
+
+      await expect(queries.deleteConversation(a, 'workspace-a', 'conv-delete-mine')).resolves.toBe(true);
+      await expect(queries.findConversation(a, 'workspace-a', 'conv-delete-mine')).resolves.toBeNull();
+      await expect(connection!`SELECT 1 FROM messages WHERE id = 'm-delete-mine'`).resolves.toHaveLength(0);
+    });
+  });
+});

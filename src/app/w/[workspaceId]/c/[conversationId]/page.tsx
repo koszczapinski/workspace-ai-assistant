@@ -1,7 +1,8 @@
 export const dynamic = "force-dynamic";
 import { redirect, notFound } from 'next/navigation';
 import { authorizeWorkspace } from '@/lib/authorization';
-import { findConversation } from '@/lib/conversation-queries';
+import { findConversation, listConversations } from '@/lib/conversation-queries';
+import { toChatMessages, toConversationListView } from '@/lib/conversation-view';
 import Chat from '../../chat';
 
 /**
@@ -17,6 +18,14 @@ export default async function ConversationPage({ params }: { params: Promise<{ w
   const conversation = await findConversation(access.userId, access.workspace.id, conversationId);
   if (!conversation) notFound();
 
-  // Showing the stored messages and the Conversation list in the chat is ticket 04's UI.
-  return <Chat id={access.workspace.id} name={access.workspace.name} isOwner={access.workspace.role === 'owner'} />;
+  const list = await listConversations(access.userId, access.workspace.id, null);
+  return (
+    <Chat
+      id={access.workspace.id}
+      name={access.workspace.name}
+      isOwner={access.workspace.role === 'owner'}
+      conversations={toConversationListView(list)}
+      conversation={{ id: conversation.id, title: conversation.title, messages: toChatMessages(conversation.messages) }}
+    />
+  );
 }

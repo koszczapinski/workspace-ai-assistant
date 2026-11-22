@@ -1,13 +1,17 @@
 'use client';
 
 import Link from 'next/link';
-import { ArrowLeft, Check, CircleAlert, LoaderCircle, Send, Sparkles, Square, Users } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowLeft, Check, CircleAlert, LoaderCircle, MessagesSquare, Send, Sparkles, Square, SquarePen, Trash2, Users } from 'lucide-react';
 import { useChat } from '@ai-sdk/react';
-import { DefaultChatTransport, type ChatTransport, type UIMessage } from 'ai';
+import type { ChatTransport, UIMessage } from 'ai';
 import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BrandLogo } from '@/components/brand-logo';
+import { createChatTransport } from '@/lib/chat-transport';
+import { conversationTitle } from '@/lib/conversation-title';
+import type { ConversationListView, OpenConversation } from '@/lib/conversation-view';
 import { parseUsageLimit, usageLimitMessage } from '@/lib/usage-limit-message';
 import {
   Trace,
@@ -19,13 +23,223 @@ import {
   TraceTitle,
 } from '@/components/ui/trace';
 
-type ChatProps = { id: string; name: string; isOwner?: boolean; transport?: ChatTransport<UIMessage> };
+type ChatProps = {
+  id: string;
+  name: string;
+  isOwner?: boolean;
+  transport?: ChatTransport<UIMessage>;
+  /** The first page of the Session User's Conversations in this Workspace. */
+  conversations?: ConversationListView;
+  /** The stored Conversation the address opens; absent for a new one. */
+  conversation?: OpenConversation;
+};
 
+const NO_CONVERSATIONS: ConversationListView = { conversations: [], nextCursor: null };
+const focusRing = 'outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background';
+
+/** Changing Workspace remounts everything, which cancels the active request and clears the screen. */
 export default function Chat(props: ChatProps) {
-  return <ChatSession key={props.id} {...props} />;
+  return <WorkspaceChat key={props.id} {...props} />;
 }
 
-function ChatSession({ id, name, isOwner, transport }: ChatProps) {
+function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVERSATIONS, conversation }: ChatProps) {
+  const router = useRouter();
+  const [list, setList] = useState(conversations);
+  const [opening, setOpening] = useState(conversation);
+  const [openId, setOpenId] = useState(conversation?.id ?? null);
+  // Each new chat session (new Conversation, switch, delete of the open one) remounts the chat,
+  // which aborts its request so late chunks have nowhere to land.
+  const [session, setSession] = useState(0);
+  const [listOpen, setListOpen] = useState(false);
+  const [listError, setListError] = useState<string | null>(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  // A navigation brings fresh server props: show what the server opened.
+  const [served, setServed] = useState({ conversations, conversation });
+  if (served.conversations !== conversations || served.conversation !== conversation) {
+    setServed({ conversations, conversation });
+    setList(conversations);
+    setOpening(conversation);
+    setOpenId(conversation?.id ?? null);
+    setSession(value => value + 1);
+  }
+
+  const workspacePath = `/w/${id}`;
+  const conversationPath = (conversationId: string) => `/w/${id}/c/${conversationId}`;
+
+  function startSession(next: OpenConversation | undefined, nextOpenId: string | null) {
+    setOpening(next);
+    setOpenId(nextOpenId);
+    setSession(value => value + 1);
+    setListOpen(false);
+  }
+
+  // Navigating (not only rewriting the address) keeps the router's page in step with the address,
+  // so a later link back to the Conversation that was open loads it again.
+  function startNewConversation(history: 'push' | 'replace') {
+    startSession(undefined, null);
+    router[history](workspacePath);
+  }
+
+  /** A turn was stored: the Conversation moves to the top, and a new one gets its address. */
+  function saved(conversationId: string, title: string, { open }: { open: boolean }) {
+    setList(previous => {
+      const item = previous.conversations.find(entry => entry.id === conversationId) ?? { id: conversationId, title };
+      return { ...previous, conversations: [item, ...previous.conversations.filter(entry => entry.id !== conversationId)] };
+    });
+    if (!open) return;
+    setOpenId(conversationId);
+    if (window.location.pathname !== conversationPath(conversationId)) {
+      window.history.replaceState(null, '', conversationPath(conversationId));
+    }
+  }
+
+  async function loadMore() {
+    if (!list.nextCursor) return;
+    setLoadingMore(true);
+    setListError(null);
+    try {
+      const response = await fetch(`/api/workspaces/${id}/conversations?cursor=${encodeURIComponent(list.nextCursor)}`);
+      if (!response.ok) throw new Error('Could not load conversations');
+      const page = await response.json() as ConversationListView;
+      setList(previous => ({
+        conversations: [...previous.conversations, ...page.conversations.filter(entry => !previous.conversations.some(shown => shown.id === entry.id))],
+        nextCursor: page.nextCursor,
+      }));
+    } catch {
+      setListError('Could not load more conversations. Try again.');
+    } finally {
+      setLoadingMore(false);
+    }
+  }
+
+  async function remove(conversationId: string) {
+    setListError(null);
+    const response = await fetch(`/api/workspaces/${id}/conversations/${encodeURIComponent(conversationId)}`, { method: 'DELETE' }).catch(() => null);
+    // A 404 means it is already gone for this User.
+    if (!response || (!response.ok && response.status !== 404)) {
+      setListError('Could not delete the conversation. Try again.');
+      return;
+    }
+    setList(previous => ({ ...previous, conversations: previous.conversations.filter(entry => entry.id !== conversationId) }));
+    if (conversationId === openId) startNewConversation('replace');
+  }
+
+  return (
+    <main className="relative mx-auto flex h-[calc(100dvh-4rem)] min-h-[30rem] max-w-6xl gap-6 overflow-hidden px-3 sm:px-8">
+      <nav
+        id="conversation-list"
+        aria-label="Conversations"
+        className={`${listOpen ? 'flex' : 'hidden'} absolute inset-x-3 top-16 z-20 max-h-[70%] flex-col gap-3 rounded-2xl border bg-background/95 p-3 shadow-lg backdrop-blur-xl sm:inset-x-8 md:static md:z-auto md:flex md:max-h-none md:w-64 md:shrink-0 md:rounded-none md:border-0 md:border-r md:bg-transparent md:py-5 md:pl-0 md:pr-4 md:shadow-none md:backdrop-blur-none`}
+      >
+        <Button type="button" variant="outline" className={`h-10 w-full justify-start gap-2 rounded-full px-4 ${focusRing}`} onClick={() => startNewConversation('push')}>
+          <SquarePen aria-hidden="true" className="size-4" />
+          <span>New conversation</span>
+        </Button>
+        <p className="px-1 text-[0.65rem] font-medium uppercase tracking-[0.2em] text-muted-foreground">Your conversations</p>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {list.conversations.length === 0 ? (
+            <div className="rounded-xl border border-dashed px-3 py-5 text-center">
+              <MessagesSquare aria-hidden="true" className="mx-auto mb-2 size-5 text-muted-foreground" />
+              <p className="text-sm font-medium">No conversations yet</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Send a message to start your first one.</p>
+            </div>
+          ) : (
+            <ul className="space-y-1">
+              {list.conversations.map(entry => {
+                const current = entry.id === openId;
+                return (
+                  <li key={entry.id} className={`group flex items-center gap-1 rounded-xl ${current ? 'bg-muted' : 'hover:bg-muted/60'}`}>
+                    <Link
+                      href={conversationPath(entry.id)}
+                      aria-current={current ? 'page' : undefined}
+                      className={`min-w-0 flex-1 truncate rounded-xl px-3 py-2 text-sm ${current ? 'font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'} ${focusRing}`}
+                      onClick={() => {
+                        if (!current) startSession(undefined, entry.id);
+                      }}
+                    >
+                      {entry.title}
+                    </Link>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Delete conversation: ${entry.title}`}
+                      className={`mr-1 rounded-full text-muted-foreground hover:text-destructive ${focusRing}`}
+                      onClick={() => remove(entry.id)}
+                    >
+                      <Trash2 aria-hidden="true" className="size-3.5" />
+                    </Button>
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+          {list.nextCursor && (
+            <Button type="button" variant="ghost" className={`mt-2 w-full rounded-full text-muted-foreground ${focusRing}`} disabled={loadingMore} onClick={loadMore}>
+              {loadingMore ? 'Loading…' : 'Load more conversations'}
+            </Button>
+          )}
+        </div>
+        {listError && <p role="alert" className="px-1 text-xs text-destructive">{listError}</p>}
+      </nav>
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="relative mx-auto flex w-full max-w-3xl shrink-0 items-center justify-between gap-4 border-b py-4 sm:py-5">
+          <div className="flex items-center gap-1">
+            <Link href="/" className={`-ml-2 inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground ${focusRing}`}>
+              <ArrowLeft aria-hidden="true" className="size-4" />
+              <span>Workspaces</span>
+            </Link>
+            <Button
+              type="button"
+              variant="outline"
+              className={`h-9 gap-2 rounded-full px-2.5 text-muted-foreground sm:px-3 md:hidden ${focusRing}`}
+              aria-expanded={listOpen}
+              aria-controls="conversation-list"
+              onClick={() => setListOpen(value => !value)}
+            >
+              <MessagesSquare aria-hidden="true" className="size-4" />
+              <span className="max-sm:sr-only">Chats</span>
+            </Button>
+          </div>
+          <div className="flex min-w-0 items-center gap-3">
+          {isOwner && (
+            <Link href={`/w/${id}/members`} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground ${focusRing}`}>
+              <Users aria-hidden="true" className="size-4" />
+              <span>Members</span>
+            </Link>
+          )}
+          <div className="min-w-0 text-right">
+            <p className="truncate text-[0.65rem] font-medium uppercase tracking-[0.2em] text-muted-foreground">Private workspace</p>
+            <h1 className="gradient-heading truncate text-lg font-semibold tracking-tight sm:text-xl">{name}</h1>
+          </div>
+          </div>
+        </header>
+
+        <ChatSession
+          key={session}
+          id={id}
+          name={name}
+          transport={transport}
+          conversation={opening}
+          onSaved={saved}
+        />
+      </div>
+    </main>
+  );
+}
+
+type ChatSessionProps = {
+  id: string;
+  name: string;
+  transport?: ChatTransport<UIMessage>;
+  conversation?: OpenConversation;
+  /** A turn of `conversationId` was stored; `title` is what the server titles it with. */
+  onSaved: (conversationId: string, title: string, options: { open: boolean }) => void;
+};
+
+function ChatSession({ id, name, transport, conversation, onSaved }: ChatSessionProps) {
   const [input, setInput] = useState('');
   const [stoppedMessageId, setStoppedMessageId] = useState<string | null>(null);
   const [stopped, setStopped] = useState(false);
@@ -34,14 +248,26 @@ function ChatSession({ id, name, isOwner, transport }: ChatProps) {
   const responseStartedAt = useRef<number | null>(null);
   const sendInProgress = useRef(false);
   // The server names the Conversation in each reply; once a reply with text has ended, later sends continue it.
-  const conversationId = useRef<string | null>(null);
+  const conversationId = useRef<string | null>(conversation?.id ?? null);
+  // An opened Conversation keeps its title; a new one is titled by the message its first stored turn began with.
+  const title = useRef(conversation?.title ?? '');
+  // False once this session is replaced; its aborted reply may still finish but must not take over the screen.
+  const mounted = useRef(true);
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+  const [chatTransport] = useState(() => transport ?? createChatTransport(id));
   const { messages, sendMessage, status, stop, error, regenerate, clearError } = useChat({
-    id,
-    transport: transport ?? new DefaultChatTransport({ api: '/api/chat', body: { workspaceId: id } }),
+    id: `${id}:${conversation?.id ?? 'new'}`,
+    messages: conversation?.messages,
+    transport: chatTransport,
     onFinish: ({ message, isError }) => {
       const named = (message.metadata as { conversationId?: unknown } | undefined)?.conversationId;
       const hasText = message.parts.some(part => part.type === 'text' && part.text.length > 0);
-      if (!isError && hasText && typeof named === 'string') conversationId.current = named;
+      if (isError || !hasText || typeof named !== 'string') return;
+      if (mounted.current) conversationId.current = named;
+      onSaved(named, title.current, { open: mounted.current });
     },
   });
   const conversationBody = () => (conversationId.current ? { body: { conversationId: conversationId.current } } : undefined);
@@ -72,26 +298,7 @@ function ChatSession({ id, name, isOwner, transport }: ChatProps) {
   const activityStatus = error ? 'error' : stopped ? 'pending' : active ? 'running' : undefined;
 
   return (
-    <main className="relative mx-auto flex h-[calc(100dvh-4rem)] min-h-[30rem] max-w-6xl flex-col overflow-hidden px-3 sm:px-8">
-      <header className="relative mx-auto flex w-full max-w-3xl shrink-0 items-center justify-between gap-4 border-b py-4 sm:py-5">
-        <Link href="/" className="-ml-2 inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
-            <ArrowLeft aria-hidden="true" className="size-4" />
-            <span>Workspaces</span>
-        </Link>
-        <div className="flex min-w-0 items-center gap-3">
-        {isOwner && (
-          <Link href={`/w/${id}/members`} className="inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-muted-foreground outline-none hover:bg-muted hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background">
-            <Users aria-hidden="true" className="size-4" />
-            <span>Members</span>
-          </Link>
-        )}
-        <div className="min-w-0 text-right">
-          <p className="truncate text-[0.65rem] font-medium uppercase tracking-[0.2em] text-muted-foreground">Private workspace</p>
-          <h1 className="gradient-heading truncate text-lg font-semibold tracking-tight sm:text-xl">{name}</h1>
-        </div>
-        </div>
-      </header>
-
+    <>
       <section className="relative mx-auto flex min-h-0 w-full max-w-3xl flex-1 flex-col overflow-y-auto py-5 sm:py-8" aria-label="Conversation">
         {messages.length === 0 && (
           <div className="my-auto flex flex-col items-center justify-center py-10 text-center">
@@ -140,7 +347,7 @@ function ChatSession({ id, name, isOwner, transport }: ChatProps) {
                   </TraceCollapsible>
                 );
               })()}
-              {message.id === stoppedMessageId && <p className="mt-3 text-xs text-muted-foreground">Response stopped.</p>}
+              {(message.id === stoppedMessageId || isStoredStopped(message)) && <p className="mt-3 text-xs text-muted-foreground">Response stopped.</p>}
             </article>
           ))}
         </div>
@@ -172,6 +379,7 @@ function ChatSession({ id, name, isOwner, transport }: ChatProps) {
             responseStartedAt.current = Date.now();
             setElapsedMs(null);
             setReasoningOpen({});
+            if (!conversationId.current) title.current = conversationTitle(input);
             sendMessage({ text: input.trim() }, conversationBody());
             setInput('');
             setStoppedMessageId(null);
@@ -212,6 +420,10 @@ function ChatSession({ id, name, isOwner, transport }: ChatProps) {
           <Send aria-hidden="true" className="size-4" />
         </Button>
       </form>
-    </main>
+    </>
   );
+}
+
+function isStoredStopped(message: UIMessage): boolean {
+  return (message.metadata as { stopped?: unknown } | undefined)?.stopped === true;
 }

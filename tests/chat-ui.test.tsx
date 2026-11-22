@@ -2,8 +2,11 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { createUIMessageStream, createUIMessageStreamResponse, DefaultChatTransport } from 'ai';
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import Chat from '@/app/w/[workspaceId]/chat';
+
+// The chat navigates with the App Router, which is not mounted here.
+vi.mock('next/navigation', () => ({ useRouter: () => ({ push: () => {}, replace: () => {} }) }));
 
 afterEach(cleanup);
 

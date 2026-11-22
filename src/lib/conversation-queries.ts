@@ -70,6 +70,19 @@ export function createConversationQueries(database: typeof db) {
         .orderBy(asc(messages.createdAt), asc(messages.id));
       return { ...conversation, messages: stored };
     },
+
+    /** Deletes the Conversation and, through the foreign key, its messages. False when it is not this User's in this Workspace. */
+    async deleteConversation(userId: string, workspaceId: string, conversationId: string): Promise<boolean> {
+      if (!database) return false;
+      const deleted = await database.delete(conversations)
+        .where(and(
+          eq(conversations.id, conversationId),
+          eq(conversations.userId, userId),
+          eq(conversations.workspaceId, workspaceId),
+        ))
+        .returning({ id: conversations.id });
+      return deleted.length > 0;
+    },
   };
 }
 
@@ -77,3 +90,4 @@ const conversationQueries = createConversationQueries(db);
 
 export const listConversations = conversationQueries.listConversations;
 export const findConversation = conversationQueries.findConversation;
+export const deleteConversation = conversationQueries.deleteConversation;

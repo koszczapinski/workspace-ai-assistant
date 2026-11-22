@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { and, desc, eq, sql } from 'drizzle-orm';
 import { db } from './db';
+import { conversationTitle } from './conversation-title';
 import { conversations, messages } from './schema';
 
 export type StoredMessage = { role: 'user' | 'assistant'; content: string; stopped: boolean };
@@ -28,11 +29,6 @@ export type ConversationTurns = {
   saveTurn(turn: Turn): Promise<void>;
 };
 
-const TITLE_LENGTH = 80;
-
-export function conversationTitle(text: string): string {
-  return text.replace(/\s+/g, ' ').trim().slice(0, TITLE_LENGTH);
-}
 
 export function createConversationTurns(database: typeof db): ConversationTurns {
   return {
