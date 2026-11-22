@@ -23,6 +23,7 @@ jobs:
           --health-timeout 5s
           --health-retries 5
     env:
+      APP_ENV: test
       DATABASE_URL: postgres://postgres:postgres@localhost:5432/workspace_ai_test
       TEST_DATABASE_URL: postgres://postgres:postgres@localhost:5432/workspace_ai_test
       BETTER_AUTH_SECRET: ci-only-secret-that-is-not-used-outside-this-job
@@ -41,7 +42,7 @@ jobs:
           cache: npm
       - run: npm ci
       - name: Apply schema to isolated test database
-        run: npx drizzle-kit migrate
+        run: npm run db:migrate
       - run: npm run db:seed
       - run: npm run typecheck
       - run: npm run lint

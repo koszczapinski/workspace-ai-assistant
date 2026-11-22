@@ -3,6 +3,9 @@ import { loadEnvConfig } from '@next/env';
 
 loadEnvConfig(process.cwd());
 
+// The journeys store and delete rows, so the global setup, teardown and web server always run as test (ADR-0002).
+process.env.APP_ENV = 'test';
+
 const baseURL = 'http://localhost:3000';
 
 export default defineConfig({
@@ -25,6 +28,7 @@ export default defineConfig({
     env: {
       ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
       ...(process.env.BETTER_AUTH_SECRET ? { BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET } : {}),
+      APP_ENV: 'test',
       BETTER_AUTH_URL: baseURL,
       OPENAI_API_KEY: '',
       CHAT_FAKE_PROVIDER: 'true',

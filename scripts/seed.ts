@@ -2,6 +2,7 @@ import { loadEnvConfig } from '@next/env';
 import { createHash } from 'node:crypto';
 import { hashPassword } from 'better-auth/crypto';
 import postgres from 'postgres';
+import { assertPostgresOperationAllowed } from '../src/lib/environment-guard';
 
 loadEnvConfig(process.cwd());
 
@@ -33,6 +34,7 @@ async function main(): Promise<void> {
   ] as const;
 
   try {
+    await assertPostgresOperationAllowed(sql, databaseUrl, ['development', 'test']);
     await sql.begin(async transaction => {
       for (const demo of demoUsers) {
         const userId = `demo-${demo.key}-${createHash('sha256').update(demo.email).digest('hex').slice(0, 16)}`;

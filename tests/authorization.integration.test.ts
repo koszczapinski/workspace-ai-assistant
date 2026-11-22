@@ -13,6 +13,7 @@ import { generateInvitationToken, hashInvitationToken } from '../src/lib/invitat
 import { createConversationStore } from '../src/lib/conversations';
 import { createConversationListHandler } from '../src/lib/conversation-handlers';
 import { randomUUID } from 'node:crypto';
+import { assertPostgresOperationAllowed } from '../src/lib/environment-guard';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const emailA = process.env.DEMO_USER_A_EMAIL;
@@ -23,12 +24,14 @@ const passwordB = process.env.DEMO_USER_B_PASSWORD;
 const migration = (name: string) => readFileSync(path.join(process.cwd(), 'db/migrations', name), 'utf8')
   .replaceAll('--> statement-breakpoint', '');
 
-beforeAll(() => {
+beforeAll(async () => {
   if (!testDatabaseUrl) return;
 
-  const url = new URL(testDatabaseUrl!);
-  if (url.pathname !== '/workspace_ai_test') {
-    throw new Error('TEST_DATABASE_URL must point to the dedicated workspace_ai_test database');
+  const guardConnection = postgres(testDatabaseUrl, { max: 1 });
+  try {
+    await assertPostgresOperationAllowed(guardConnection, testDatabaseUrl, ['test']);
+  } finally {
+    await guardConnection.end();
   }
 
   runSeed();
@@ -37,7 +40,7 @@ beforeAll(() => {
 function runSeed() {
   const seed = spawnSync('npm', ['run', 'db:seed'], {
     cwd: process.cwd(),
-    env: { ...process.env, DATABASE_URL: testDatabaseUrl },
+    env: { ...process.env, DATABASE_URL: testDatabaseUrl, APP_ENV: 'test' },
     encoding: 'utf8',
   });
   expect(seed.error).toBeUndefined();
@@ -49,9 +52,6 @@ it.skipIf(!testDatabaseUrl)('checks workspace membership with the real PostgreSQ
 
   const connection = postgres(testDatabaseUrl!, { max: 1 });
   try {
-    const [{ databaseName }] = await connection<{ databaseName: string }[]>`SELECT current_database() AS "databaseName"`;
-    expect(databaseName).toBe('workspace_ai_test');
-
     const [userA] = await connection<{ id: string }[]>`SELECT id FROM "user" WHERE email = ${emailA}`;
     const [userB] = await connection<{ id: string }[]>`SELECT id FROM "user" WHERE email = ${emailB}`;
     expect(userA).toBeDefined();

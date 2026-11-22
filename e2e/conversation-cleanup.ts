@@ -1,4 +1,5 @@
 import postgres from 'postgres';
+import { assertPostgresOperationAllowed } from '../src/lib/environment-guard';
 
 /**
  * The journeys sign in as the Demo users and their messages are stored as real Conversations.
@@ -17,19 +18,13 @@ function demoEmails() {
   ];
 }
 
-// The same dedicated test database the integration tests require; these deletes never run anywhere else.
-const TEST_DATABASE_NAME = 'workspace_ai_test';
-
+// The shared guard allows only APP_ENV=test on the dedicated test database; these deletes never run anywhere else.
 async function withDatabase(run: (sql: postgres.Sql) => Promise<void>) {
   const url = process.env.DATABASE_URL;
   if (!url) return;
-  if (new URL(url).pathname !== `/${TEST_DATABASE_NAME}`) {
-    throw new Error(`The Playwright journeys store and delete Conversations; DATABASE_URL must point to the dedicated ${TEST_DATABASE_NAME} database`);
-  }
   const sql = postgres(url, { max: 1 });
   try {
-    const [{ name }] = await sql<{ name: string }[]>`SELECT current_database() AS name`;
-    if (name !== TEST_DATABASE_NAME) throw new Error(`Connected to ${name}, not the dedicated ${TEST_DATABASE_NAME} database`);
+    await assertPostgresOperationAllowed(sql, url, ['test']);
     await run(sql);
   } finally {
     await sql.end();

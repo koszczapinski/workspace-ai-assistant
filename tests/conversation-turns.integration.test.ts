@@ -3,6 +3,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import * as schema from '../src/lib/schema';
+import { assertPostgresOperationAllowed } from '../src/lib/environment-guard';
 import { createConversationStore } from '../src/lib/conversations';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
@@ -15,11 +16,7 @@ const otherWorkspace = `${runId}-ws2`;
 
 beforeAll(async () => {
   if (!connection) return;
-  if (new URL(testDatabaseUrl!).pathname !== '/workspace_ai_test') {
-    throw new Error('TEST_DATABASE_URL must point to the dedicated workspace_ai_test database');
-  }
-  const [{ databaseName }] = await connection<{ databaseName: string }[]>`SELECT current_database() AS "databaseName"`;
-  expect(databaseName).toBe('workspace_ai_test');
+  await assertPostgresOperationAllowed(connection, testDatabaseUrl!, ['test']);
   for (const id of [owner, other]) {
     await connection`INSERT INTO "user" (id, name, email) VALUES (${id}, ${id}, ${`${id}@example.test`})`;
   }
