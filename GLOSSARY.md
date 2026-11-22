@@ -26,8 +26,12 @@ Any User with a Membership in a Workspace. Every Member chats the same way, what
 _Avoid_: Participant, seat
 
 **Owner**:
-A Member who also manages the Workspace's Memberships and Invitations. The server derives the role only from the Session and the stored Membership, never from submitted data.
+A Member who also manages the Workspace's Memberships and Invitations and edits the Workspace settings. The server derives the role only from the Session and the stored Membership, never from submitted data.
 _Avoid_: Admin, manager
+
+**Workspace settings**:
+The name and Assistant instructions of one Workspace, changed only by its Owners. A save replaces both, the last save wins, and it applies from the next chat request.
+_Avoid_: Config, preferences, admin panel
 
 **Invitation**:
 A single-use, expiring link from an Owner that lets one person create an account and join as a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
