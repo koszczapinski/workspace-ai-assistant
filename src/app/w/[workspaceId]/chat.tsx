@@ -285,7 +285,7 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
       </nav>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="relative mx-auto flex w-full max-w-3xl shrink-0 items-center justify-between gap-4 border-b py-4 sm:py-5">
+        <header className="relative mx-auto flex w-full max-w-3xl shrink-0 flex-wrap items-center justify-between gap-x-4 gap-y-3 border-b py-4 sm:flex-nowrap sm:py-5">
           <div className="flex items-center gap-1">
             <Link href="/" className={`-ml-2 inline-flex h-9 items-center gap-2 rounded-full px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground ${focusRing}`}>
               <ArrowLeft aria-hidden="true" className="size-4" />
@@ -303,7 +303,7 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
               <span className="max-sm:sr-only">Chats</span>
             </Button>
           </div>
-          <div className="flex min-w-0 items-center gap-3">
+          <div className="flex min-w-0 items-center gap-3 max-sm:w-full max-sm:flex-wrap">
           {isOwner && (
             <Link href={`/w/${id}/settings`} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground ${focusRing}`}>
               <Settings aria-hidden="true" className="size-4" />
@@ -316,7 +316,7 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
               <span>Members</span>
             </Link>
           )}
-          <div className="min-w-0 text-right">
+          <div className="min-w-0 text-right max-sm:order-first max-sm:basis-full max-sm:text-left">
             <p className="truncate text-[0.65rem] font-medium uppercase tracking-[0.2em] text-muted-foreground">Private workspace</p>
             <h1 className="gradient-heading truncate text-lg font-semibold tracking-tight sm:text-xl">{name}</h1>
           </div>
