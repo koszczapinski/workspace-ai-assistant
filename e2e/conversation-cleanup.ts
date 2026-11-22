@@ -7,7 +7,7 @@ import postgres from 'postgres';
  * and never touches Conversations that existed before it.
  */
 const STARTED_AT = 'E2E_CONVERSATIONS_STARTED_AT';
-// The last journey's reply is stored just after its stream closes; give that save time to land.
+// A reply the browser stopped reading is still stored after its request ends; give that save time to land.
 const SAVE_SETTLE_MS = 1_000;
 
 function demoEmails() {
@@ -17,11 +17,19 @@ function demoEmails() {
   ];
 }
 
+// The same dedicated test database the integration tests require; these deletes never run anywhere else.
+const TEST_DATABASE_NAME = 'workspace_ai_test';
+
 async function withDatabase(run: (sql: postgres.Sql) => Promise<void>) {
   const url = process.env.DATABASE_URL;
   if (!url) return;
+  if (new URL(url).pathname !== `/${TEST_DATABASE_NAME}`) {
+    throw new Error(`The Playwright journeys store and delete Conversations; DATABASE_URL must point to the dedicated ${TEST_DATABASE_NAME} database`);
+  }
   const sql = postgres(url, { max: 1 });
   try {
+    const [{ name }] = await sql<{ name: string }[]>`SELECT current_database() AS name`;
+    if (name !== TEST_DATABASE_NAME) throw new Error(`Connected to ${name}, not the dedicated ${TEST_DATABASE_NAME} database`);
     await run(sql);
   } finally {
     await sql.end();
