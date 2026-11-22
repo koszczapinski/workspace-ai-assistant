@@ -59,3 +59,25 @@ it('sends no text when the fake reply is Stopped before any', async () => {
   expect(textOf(chunks)).toBe('');
   expect(chunks.at(-1)).toEqual({ type: 'abort' });
 });
+
+it.each(['development', 'test'])('uses the fake provider when APP_ENV is %s', async appEnv => {
+  vi.stubEnv('APP_ENV', appEnv);
+  vi.stubEnv('CHAT_FAKE_PROVIDER', 'true');
+  vi.stubEnv('CHAT_FAKE_PROVIDER_DELAY_MS', '0');
+  vi.stubEnv('OPENAI_API_KEY', '');
+
+  const chunks = await readAll(await streamAssistant({ instructions: 'Demo', messages: [hello] }));
+
+  expect(textOf(chunks)).toBe('Demo response: Hello');
+});
+
+it.each([
+  ['production', 'production'],
+  ['missing', undefined],
+])('never uses the fake provider when APP_ENV is %s', async (_label, appEnv) => {
+  vi.stubEnv('APP_ENV', appEnv);
+  vi.stubEnv('CHAT_FAKE_PROVIDER', 'true');
+  vi.stubEnv('OPENAI_API_KEY', '');
+
+  await expect(streamAssistant({ instructions: 'Demo', messages: [hello] })).rejects.toThrow('AI provider is not configured');
+});
