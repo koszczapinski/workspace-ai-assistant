@@ -24,16 +24,12 @@ const passwordB = process.env.DEMO_USER_B_PASSWORD;
 const migration = (name: string) => readFileSync(path.join(process.cwd(), 'db/migrations', name), 'utf8')
   .replaceAll('--> statement-breakpoint', '');
 
+const connection = testDatabaseUrl ? postgres(testDatabaseUrl, { max: 1 }) : null;
+afterAll(async () => { await connection?.end(); });
+
 beforeAll(async () => {
-  if (!testDatabaseUrl) return;
-
-  const guardConnection = postgres(testDatabaseUrl, { max: 1 });
-  try {
-    await assertPostgresOperationAllowed(guardConnection, testDatabaseUrl, ['test']);
-  } finally {
-    await guardConnection.end();
-  }
-
+  if (!connection) return;
+  await assertPostgresOperationAllowed(connection, testDatabaseUrl!, ['test']);
   runSeed();
 });
 
@@ -117,8 +113,6 @@ it.skipIf(!testDatabaseUrl)('seeds credential accounts that allow both demo user
 });
 
 // Roles and Members (shares the seed above; separate files would race on the same test database).
-const connection = testDatabaseUrl ? postgres(testDatabaseUrl, { max: 1 }) : null;
-afterAll(async () => { await connection?.end(); });
 
 async function userId(email: string) {
   const [row] = await connection!<{ id: string }[]>`SELECT id FROM "user" WHERE email = ${email}`;
