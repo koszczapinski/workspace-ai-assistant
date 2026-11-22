@@ -18,7 +18,11 @@ Goal: keep the project a portfolio piece that shows depth. One small, finished i
    - Membership gets a role (`owner` or `member`). A **Member** is any User with a Membership; an **Owner** is a Member who also manages Memberships and Invitations and sees the members screen. Seeded Demo users are Owners of their Workspace.
    - Invitations: an Owner creates a single-use, expiring link; the invitee creates an account and joins as a Member. No email delivery, no public signup.
 
-4. **Workspace settings** (spec: GitHub issue #18, ticket #21).
+4. **Rename a Conversation's Title** (spec and tickets in GitHub Issues #17, #19, #20).
+   - A User renames their own Conversation inline in the Conversations list: Enter saves, Escape cancels, an empty Title restores the automatic one (the truncated first message).
+   - `PATCH` on the single-Conversation endpoint; the Conversation keeps its place in the list and a later turn does not overwrite a manual Title.
+
+5. **Workspace settings** (spec: GitHub issue #18, ticket #21).
    - An Owner edits the Workspace's name and Assistant instructions on a settings screen next to the members screen; saved together, last write wins, applied from the next chat request. No new role.
 
 ## Later (not excluded, not yet ordered)
@@ -26,7 +30,7 @@ Goal: keep the project a portfolio piece that shows depth. One small, finished i
 - Per-Workspace Usage limits (configurable by an Owner).
 - An audit log of Owner actions (settings changes, Membership changes).
 
-RAG and tool use / function calling. They stay out of scope for the current version (`AGENTS.md`), but they are not ruled out of future iterations. Their order and scope get decided in a later grilling round, once the four increments above are done.
+RAG and tool use / function calling. They stay out of scope for the current version (`AGENTS.md`), but they are not ruled out of future iterations. Their order and scope get decided in a later grilling round, once the five increments above are done.
 
 ## Not planned
 

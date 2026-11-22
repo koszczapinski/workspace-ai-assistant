@@ -62,6 +62,9 @@ _Avoid_: System prompt, system instructions
 The messages one User exchanges with the assistant in one Workspace, stored in PostgreSQL, owned by that User and visible only to them. A reload restores it. Changing Workspace or signing out clears the screen, and the stored Conversation loads again on return.
 _Avoid_: Session, thread
 
+**Title**:
+The name of a Conversation shown in its User's list: the truncated first message unless the User renamed it.
+
 ### Response lifecycle
 
 **Stop**:
