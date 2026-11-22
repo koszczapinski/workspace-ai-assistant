@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, CircleAlert, LoaderCircle, MessagesSquare, Send, Sparkles, Square, SquarePen, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, Check, CircleAlert, LoaderCircle, MessagesSquare, Send, Settings, Sparkles, Square, SquarePen, Trash2, Users } from 'lucide-react';
 import { useChat } from '@ai-sdk/react';
 import { APICallError, type ChatTransport, type UIMessage } from 'ai';
 import { useEffect, useRef, useState } from 'react';
@@ -221,6 +221,12 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
             </Button>
           </div>
           <div className="flex min-w-0 items-center gap-3">
+          {isOwner && (
+            <Link href={`/w/${id}/settings`} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground ${focusRing}`}>
+              <Settings aria-hidden="true" className="size-4" />
+              <span>Settings</span>
+            </Link>
+          )}
           {isOwner && (
             <Link href={`/w/${id}/members`} className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-full border px-3 text-sm text-muted-foreground hover:bg-muted hover:text-foreground ${focusRing}`}>
               <Users aria-hidden="true" className="size-4" />
