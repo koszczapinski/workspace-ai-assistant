@@ -7,6 +7,9 @@ const baseURL = 'http://localhost:3000';
 
 export default defineConfig({
   testDir: './e2e',
+  // Journeys store real Conversations for the Demo users; teardown deletes the ones this run created.
+  globalSetup: './e2e/global-setup.ts',
+  globalTeardown: './e2e/global-teardown.ts',
   fullyParallel: false,
   reporter: 'list',
   use: {

@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] A hand-written migration `0005` is committed and registered in the migration journal the same way as `0004`, so the existing migrate command applies it. The Drizzle table definitions match the SQL.
 - [ ] `conversations` has `id` (text primary key), `workspace_id` (not null, references `workspaces`, on delete cascade), `user_id` (not null, references `user`, on delete cascade), `title` (text, not null), `created_at` and `updated_at` (`timestamptz`, not null, default now).
@@ -13,3 +13,7 @@
 - [ ] New timestamp columns are timezone-aware in Drizzle as well as `timestamptz` in SQL. Existing tables and their timestamp columns are left as they are.
 - [ ] `content` is plain text. There is no column for retrieval sources, and no backfill.
 - [ ] Typecheck, lint, the existing tests, and the production build pass.
+
+## Comments
+
+- Resolved on branch feat/persistent-conversations in 2d99c9a.

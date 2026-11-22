@@ -10,6 +10,9 @@ import * as schema from '../src/lib/schema';
 import { createWorkspaceQueries } from '../src/lib/workspaces';
 import { createInvitationStore } from '../src/lib/invitation-store';
 import { generateInvitationToken, hashInvitationToken } from '../src/lib/invitations';
+import { createConversationStore } from '../src/lib/conversations';
+import { createConversationListHandler } from '../src/lib/conversation-handlers';
+import { randomUUID } from 'node:crypto';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const emailA = process.env.DEMO_USER_A_EMAIL;
@@ -453,5 +456,227 @@ it.skipIf(!testDatabaseUrl)('lets only one of several simultaneous acceptances w
   } finally {
     await pool.end();
     await cleanAccept();
+  }
+});
+
+// Conversations: reads are scoped to one User in one Workspace (same seeded database, same file).
+async function withConversations(rows: Array<{ id: string; workspaceId: string; userId: string; title?: string; updatedAt: string }>, run: () => Promise<void>) {
+  try {
+    for (const row of rows) {
+      await connection!`INSERT INTO conversations (id, workspace_id, user_id, title, updated_at)
+        VALUES (${row.id}, ${row.workspaceId}, ${row.userId}, ${row.title ?? row.id}, ${row.updatedAt}::timestamptz)`;
+    }
+    await run();
+  } finally {
+    await connection!`DELETE FROM conversations WHERE id IN ${connection!(rows.map(row => row.id))}`;
+  }
+}
+
+it.skipIf(!testDatabaseUrl)("lists only the Session User's Conversations in that Workspace, newest activity first", async () => {
+  const queries = createConversationStore(drizzle(connection!, { schema }));
+  const a = await userId(emailA!);
+  const b = await userId(emailB!);
+  await withExtraUsers(['conv-list-member'], 'workspace-a', ['member'], async () => {
+    await withConversations([
+      { id: 'conv-list-old', workspaceId: 'workspace-a', userId: a, title: 'Older', updatedAt: '2030-01-01T10:00:00Z' },
+      { id: 'conv-list-new', workspaceId: 'workspace-a', userId: a, title: 'Newer', updatedAt: '2030-01-02T10:00:00Z' },
+      { id: 'conv-list-tie-a', workspaceId: 'workspace-a', userId: a, title: 'Tie A', updatedAt: '2030-01-01T12:00:00Z' },
+      { id: 'conv-list-tie-b', workspaceId: 'workspace-a', userId: a, title: 'Tie B', updatedAt: '2030-01-01T12:00:00Z' },
+      { id: 'conv-list-other-member', workspaceId: 'workspace-a', userId: 'conv-list-member', updatedAt: '2030-01-03T10:00:00Z' },
+      { id: 'conv-list-other-workspace', workspaceId: 'workspace-b', userId: b, updatedAt: '2030-01-03T10:00:00Z' },
+    ], async () => {
+      const page = await queries.listConversations(a, 'workspace-a', null);
+      expect(page.conversations.map(c => c.title)).toEqual(['Newer', 'Tie B', 'Tie A', 'Older']);
+      expect(page.nextCursor).toBeNull();
+
+      await expect(queries.listConversations('conv-list-member', 'workspace-a', null)).resolves
+        .toMatchObject({ conversations: [{ id: 'conv-list-other-member' }] });
+      await expect(queries.listConversations(b, 'workspace-a', null)).resolves.toEqual({ conversations: [], nextCursor: null });
+    });
+  });
+});
+
+/** The list endpoint with the real store, as `who` (the Session is faked; the database is real). */
+function listAs(who: string) {
+  const list = createConversationListHandler({
+    authorize: async (workspaceId: string) => ({ kind: 'authorized', userId: who, workspace: { id: workspaceId, name: 'Workspace A', assistantInstructions: 'x' } }),
+    queries: createConversationStore(drizzle(connection!, { schema })),
+  });
+  return async (cursor?: string) => {
+    const query = cursor === undefined ? '' : `?cursor=${encodeURIComponent(cursor)}`;
+    return list(new Request(`http://localhost:3000/api/workspaces/workspace-a/conversations${query}`), 'workspace-a');
+  };
+}
+type ListBody = { conversations: Array<{ id: string; title: string }>; nextCursor: string | null };
+
+it.skipIf(!testDatabaseUrl)('pages through Conversations 20 at a time with a cursor, without skipping or repeating any', async () => {
+  const a = await userId(emailA!);
+  const b = await userId(emailB!);
+  // 45 Conversations, one second apart; five share one updated_at so the id tie-break crosses a page boundary.
+  const tied = ['conv-page-17', 'conv-page-18', 'conv-page-19', 'conv-page-20', 'conv-page-21'];
+  const rows = Array.from({ length: 45 }, (_, i) => {
+    const id = `conv-page-${String(i).padStart(2, '0')}`;
+    return { id, workspaceId: 'workspace-a', userId: a, updatedAt: tied.includes(id) ? '2030-02-01T00:00:00.123456Z' : new Date(Date.UTC(2030, 0, 1, 0, 0, i)).toISOString() };
+  });
+  const getA = listAs(a);
+
+  await withConversations(rows, async () => {
+    const seen: string[] = [];
+    const sizes: number[] = [];
+    let cursor: string | undefined;
+    do {
+      const response = await getA(cursor);
+      expect(response.status).toBe(200);
+      const body = await response.json() as ListBody;
+      sizes.push(body.conversations.length);
+      seen.push(...body.conversations.map(c => c.id));
+      cursor = body.nextCursor ?? undefined;
+    } while (cursor);
+
+    expect(sizes).toEqual([20, 20, 5]);
+    expect(seen).toEqual([...tied].reverse().concat(rows.map(r => r.id).filter(id => !tied.includes(id)).reverse()));
+
+    // A cursor from Demo user A's list still only ever reads the Session User's own Conversations.
+    const { nextCursor } = await (await getA()).json() as ListBody;
+    await expect((await listAs(b)(nextCursor!)).json()).resolves.toEqual({ conversations: [], nextCursor: null });
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('rejects a malformed cursor with 400 and answers a cursor past the end with an empty page', async () => {
+  const a = await userId(emailA!);
+  const getA = listAs(a);
+  const rows = Array.from({ length: 21 }, (_, i) => ({ id: `conv-end-${String(i).padStart(2, '0')}`, workspaceId: 'workspace-a', userId: a, updatedAt: new Date(Date.UTC(2030, 0, 1, 0, 0, i)).toISOString() }));
+
+  await withConversations(rows, async () => {
+    for (const malformed of ['', 'not-a-cursor', '%%%', Buffer.from('{"x":1}').toString('base64url')]) {
+      expect((await getA(malformed)).status).toBe(400);
+    }
+
+    const { nextCursor } = await (await getA()).json() as ListBody;
+    expect(nextCursor).not.toBeNull();
+    await connection!`DELETE FROM conversations WHERE id = 'conv-end-00'`;
+    const response = await getA(nextCursor!);
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ conversations: [], nextCursor: null });
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('opens a Conversation with its messages in stored order, and only for the User who owns it', async () => {
+  const queries = createConversationStore(drizzle(connection!, { schema }));
+  const a = await userId(emailA!);
+  const b = await userId(emailB!);
+  await withExtraUsers(['conv-open-member', 'conv-open-owner'], 'workspace-a', ['member', 'owner'], async () => {
+    await withConversations([
+      { id: 'conv-open-mine', workspaceId: 'workspace-a', userId: 'conv-open-member', title: 'Planning', updatedAt: '2030-01-01T00:00:00Z' },
+      { id: 'conv-open-empty', workspaceId: 'workspace-a', userId: a, updatedAt: '2030-01-01T00:00:00Z' },
+    ], async () => {
+      // Two turns, inserted out of order, with ids that sort against created_at and a 1µs gap within a turn.
+      await connection!`INSERT INTO messages (id, conversation_id, role, content, stopped, created_at) VALUES
+        ('m-a-turn2-assistant', 'conv-open-mine', 'assistant', 'Second reply', true, '2030-01-01T00:00:02.000002Z'),
+        ('m-b-turn1-assistant', 'conv-open-mine', 'assistant', 'First reply', false, '2030-01-01T00:00:01.000001Z'),
+        ('m-c-turn2-user', 'conv-open-mine', 'user', 'Second question', false, '2030-01-01T00:00:02.000001Z'),
+        ('m-d-turn1-user', 'conv-open-mine', 'user', 'First question', false, '2030-01-01T00:00:01Z')`;
+
+      const opened = await queries.findConversation('conv-open-member', 'workspace-a', 'conv-open-mine');
+      expect(opened).toMatchObject({ id: 'conv-open-mine', title: 'Planning' });
+      expect(opened!.messages.map(m => [m.role, m.content, m.stopped])).toEqual([
+        ['user', 'First question', false],
+        ['assistant', 'First reply', false],
+        ['user', 'Second question', false],
+        ['assistant', 'Second reply', true],
+      ]);
+
+      // Another Member, an Owner of the same Workspace, another Workspace's User, the wrong Workspace, a missing id: no row.
+      await expect(queries.findConversation(a, 'workspace-a', 'conv-open-mine')).resolves.toBeNull();
+      await expect(queries.findConversation('conv-open-owner', 'workspace-a', 'conv-open-mine')).resolves.toBeNull();
+      await expect(queries.findConversation(b, 'workspace-b', 'conv-open-mine')).resolves.toBeNull();
+      await expect(queries.findConversation('conv-open-member', 'workspace-b', 'conv-open-mine')).resolves.toBeNull();
+      await expect(queries.findConversation('conv-open-member', 'workspace-a', 'no-such-conversation')).resolves.toBeNull();
+
+      await expect(queries.findConversation(a, 'workspace-a', 'conv-open-empty')).resolves.toMatchObject({ messages: [] });
+    });
+  });
+});
+
+it.skipIf(!testDatabaseUrl)("deletes only the Session User's own Conversation, and its messages with it", async () => {
+  const queries = createConversationStore(drizzle(connection!, { schema }));
+  const a = await userId(emailA!);
+  await withExtraUsers(['conv-delete-member'], 'workspace-a', ['member'], async () => {
+    await withConversations([
+      { id: 'conv-delete-mine', workspaceId: 'workspace-a', userId: a, updatedAt: '2030-01-01T00:00:00Z' },
+      { id: 'conv-delete-theirs', workspaceId: 'workspace-a', userId: 'conv-delete-member', updatedAt: '2030-01-01T00:00:00Z' },
+    ], async () => {
+      await connection!`INSERT INTO messages (id, conversation_id, role, content) VALUES
+        ('m-delete-mine', 'conv-delete-mine', 'user', 'Mine'),
+        ('m-delete-theirs', 'conv-delete-theirs', 'user', 'Theirs')`;
+
+      // Another Member's Conversation, the wrong Workspace, and a missing id are all not found and delete nothing.
+      await expect(queries.deleteConversation(a, 'workspace-a', 'conv-delete-theirs')).resolves.toBe(false);
+      await expect(queries.deleteConversation(a, 'workspace-b', 'conv-delete-mine')).resolves.toBe(false);
+      await expect(queries.deleteConversation(a, 'workspace-a', 'no-such-conversation')).resolves.toBe(false);
+      await expect(queries.findConversation('conv-delete-member', 'workspace-a', 'conv-delete-theirs')).resolves
+        .toMatchObject({ messages: [{ content: 'Theirs' }] });
+
+      await expect(queries.deleteConversation(a, 'workspace-a', 'conv-delete-mine')).resolves.toBe(true);
+      await expect(queries.findConversation(a, 'workspace-a', 'conv-delete-mine')).resolves.toBeNull();
+      await expect(connection!`SELECT 1 FROM messages WHERE id = 'm-delete-mine'`).resolves.toHaveLength(0);
+    });
+  });
+});
+
+it.skipIf(!testDatabaseUrl)("keeps Demo user A's stored Conversation private to them, messages in turn order", async () => {
+  const database = drizzle(connection!, { schema });
+  const queries = createConversationStore(database);
+  const a = await userId(emailA!);
+  const b = await userId(emailB!);
+  const id = randomUUID();
+  await withExtraUsers(['conv-private-member'], 'workspace-a', ['member'], async () => {
+    try {
+      // Saved through the real write path; each turn's User message and reply share one timestamp.
+      const turns = createConversationStore(database);
+      const first = new Date('2030-03-01T09:00:00Z');
+      const second = new Date('2030-03-01T09:05:00Z');
+      await turns.saveTurn({ conversationId: id, userId: a, workspaceId: 'workspace-a', userText: 'Draft the launch note', assistantText: 'Here is a draft.', stopped: false, receivedAt: first, savedAt: first });
+      await turns.saveTurn({ conversationId: id, userId: a, workspaceId: 'workspace-a', userText: 'Shorter, please', assistantText: 'Short draft.', stopped: false, receivedAt: second, savedAt: second });
+
+      const mine = await queries.findConversation(a, 'workspace-a', id);
+      expect(mine).toMatchObject({ id, title: 'Draft the launch note' });
+      expect(mine!.messages.map(m => [m.role, m.content])).toEqual([
+        ['user', 'Draft the launch note'],
+        ['assistant', 'Here is a draft.'],
+        ['user', 'Shorter, please'],
+        ['assistant', 'Short draft.'],
+      ]);
+
+      // Demo user B and a second Member of Workspace A: an empty list, and no row to open (the page's notFound()).
+      const others: Array<[string, string]> = [[b, 'workspace-b'], [b, 'workspace-a'], ['conv-private-member', 'workspace-a']];
+      for (const [who, workspaceId] of others) {
+        await expect(queries.listConversations(who, workspaceId, null)).resolves.toEqual({ conversations: [], nextCursor: null });
+        await expect(queries.findConversation(who, workspaceId, id)).resolves.toBeNull();
+      }
+    } finally {
+      await connection!`DELETE FROM conversations WHERE id = ${id}`;
+    }
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('deleting a Workspace removes its Conversations and their messages', async () => {
+  const database = drizzle(connection!, { schema });
+  const a = await userId(emailA!);
+  const workspaceId = `conv-cascade-${randomUUID()}`;
+  const id = randomUUID();
+  try {
+    await connection!`INSERT INTO workspaces (id, name, assistant_instructions) VALUES (${workspaceId}, 'Cascade', 'Test')`;
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES (${`m-${workspaceId}`}, ${a}, ${workspaceId}, 'owner')`;
+    const now = new Date();
+    await createConversationStore(database).saveTurn({ conversationId: id, userId: a, workspaceId, userText: 'Hello', assistantText: 'Hi', stopped: false, receivedAt: now, savedAt: now });
+    await expect(createConversationStore(database).findConversation(a, workspaceId, id)).resolves.toMatchObject({ messages: [{ content: 'Hello' }, { content: 'Hi' }] });
+
+    await connection!`DELETE FROM workspaces WHERE id = ${workspaceId}`;
+
+    await expect(connection!`SELECT 1 FROM conversations WHERE id = ${id}`).resolves.toHaveLength(0);
+    await expect(connection!`SELECT 1 FROM messages WHERE conversation_id = ${id}`).resolves.toHaveLength(0);
+  } finally {
+    await connection!`DELETE FROM workspaces WHERE id = ${workspaceId}`;
   }
 });

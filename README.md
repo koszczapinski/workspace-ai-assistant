@@ -1,6 +1,6 @@
 # Workspace AI Assistant
 
-A private portfolio MVP demonstrating authenticated, workspace-isolated AI chat with streamed output. Chat messages live in browser memory and are never stored in PostgreSQL.
+A private portfolio MVP demonstrating authenticated, workspace-isolated AI chat with streamed output. Each Conversation is stored in PostgreSQL, private to the User who had it in that Workspace, so a reload keeps it.
 
 ## Local setup
 
@@ -35,7 +35,7 @@ npm run test:e2e
 npm run build
 ```
 
-Unit and route tests use controlled streams and fake adapters, so they require no AI key or database. Vitest loads the local Next.js environment files. The authorization integration tests run when `TEST_DATABASE_URL` is set; it must point to a migrated database named exactly `workspace_ai_test`. They run the seed against that database, verify workspace membership and credential account IDs, and sign in both demo users through Better Auth. These tests write only to the dedicated test database, so never point `TEST_DATABASE_URL` at a development or production database you care about. The Playwright journey needs a disposable PostgreSQL database with the schema and demo seed applied, plus a Chromium browser installed (`npx playwright install chromium`). It logs in as User A, opens Northstar Studio, sends a message, and observes the streamed fake response. Configure the Playwright environment with `DATABASE_URL`, `BETTER_AUTH_SECRET`, both demo emails, and both demo passwords before starting `npm run test:e2e`. Use a dedicated test database; never point it at a development or production database you care about.
+Unit and route tests use controlled streams and fake adapters, so they require no AI key or database. Vitest loads the local Next.js environment files. The authorization integration tests run when `TEST_DATABASE_URL` is set; it must point to a migrated database named exactly `workspace_ai_test`. They run the seed against that database, verify workspace membership and credential account IDs, and sign in both demo users through Better Auth. These tests write only to the dedicated test database, so never point `TEST_DATABASE_URL` at a development or production database you care about. The Playwright journey needs the same dedicated `workspace_ai_test` PostgreSQL database with the schema and demo seed applied (global setup refuses any other database, because teardown deletes rows), plus a Chromium browser installed (`npx playwright install chromium`). It logs in as User A, opens Northstar Studio, sends a message, and observes the streamed fake response; another journey reloads and still sees that Conversation. Global teardown deletes the Demo users' Conversations created during the run, so the run leaves no rows behind. Repeated runs within one minute can reach the per-minute Usage limit for User A; wait a minute between runs. Configure the Playwright environment with `DATABASE_URL`, `BETTER_AUTH_SECRET`, both demo emails, and both demo passwords before starting `npm run test:e2e`. Use a dedicated test database; never point it at a development or production database you care about.
 
 CI runs these checks on pull requests and pushes to `main`. Its PostgreSQL 16 service uses a fresh `workspace_ai_test` database. Demo passwords and the Better Auth secret in CI are synthetic job-local values. `CHAT_FAKE_PROVIDER=true` selects the deterministic fake stream only outside production; `CHAT_FAKE_PROVIDER_DELAY_MS` controls its pause before each response chunk (default `120` ms). CI supplies no AI key or production credentials.
 
@@ -122,7 +122,7 @@ flowchart LR
 ## Two-minute demo
 
 1. Sign in as User A with the locally configured demo credentials.
-2. Open Northstar Studio, send “Plan a short demo,” and watch the response arrive as a stream.
+2. Open Northstar Studio, send “Plan a short demo,” and watch the response arrive as a stream. Reload the page: the Conversation stays, in the Conversations list and on screen with both messages.
 3. Start another response and select Stop; verify partial output remains and is marked stopped.
 4. In a separate private browser session, sign in as User B and verify only Harbor Analytics appears.
 5. Try opening `/w/workspace-a` in User B's session and confirm access is denied.
@@ -137,9 +137,9 @@ The committed [chat screenshot](output/playwright/critical-journey.png) shows th
 
 ## Implemented features and limitations
 
-Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, Member and Owner roles, an Owner-only members screen with Invitations by link (create, revoke, accept with account creation), a last-Owner guard, membership-filtered workspace list, server-side page and chat authorization, workspace-specific instructions, streamed chat, stop/retry controls, in-memory conversation state, fake-provider tests, and Playwright journeys for login-and-stream and for creating and accepting an Invitation.
+Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, Member and Owner roles, an Owner-only members screen with Invitations by link (create, revoke, accept with account creation), a last-Owner guard, membership-filtered workspace list, server-side page and chat authorization, workspace-specific instructions, streamed chat, stop/retry controls, stored private Conversations that a reload keeps (list, New conversation, delete), fake-provider tests, and Playwright journeys for login-and-stream, reloading a stored Conversation, and creating and accepting an Invitation.
 
-Limitations: no persisted chat, public signup, email delivery of Invitations, inviting existing Users, Workspace creation or editing, password reset, more than two roles, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection (only the basic Usage limits above exist). The demo may go public only with the Usage limits configured. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
+Limitations: a reload keeps the Conversation, but Conversations are private to their User (no sharing within a Workspace), and there is no search, rename or automatic expiry of Conversations; no public signup, email delivery of Invitations, inviting existing Users, Workspace creation or editing, password reset, more than two roles, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection (only the basic Usage limits above exist). The demo may go public only with the Usage limits configured. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
 
 Agent-assisted implementation followed the `implement-spec` and `tdd` skills. The Playwright skill was consulted for browser-artifact conventions; the required automated test is implemented with the repository's installed `@playwright/test` convention. No claim is made that other skills or agents were used.
 

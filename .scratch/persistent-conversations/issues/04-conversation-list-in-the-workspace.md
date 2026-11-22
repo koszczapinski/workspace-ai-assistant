@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 (Persist a completed or Stopped turn), 03 (List and load a User's Conversations).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The Workspace view shows the User's Conversations for that Workspace, titles visible, most recently updated first, with the open one indicated. A further page can be loaded when the cursor says there is one. An empty list has an empty state.
 - [ ] New conversation clears the screen. Nothing is stored until a turn is saved, and the next send omits the Conversation id.
@@ -15,3 +15,7 @@
 - [ ] Changing Workspace or signing out still cancels the active request and clears messages, partial output, and errors on screen. Stored Conversations remain for the next visit.
 - [ ] The new controls follow the existing visual identity, work from the keyboard with visible focus and accessible names, and the list is usable on a narrow screen and a wide one.
 - [ ] Typecheck, lint, the existing tests, and the production build pass, including the existing Playwright journeys.
+
+## Comments
+
+- Resolved on branch feat/persistent-conversations in 21a30ec, 2205831.
