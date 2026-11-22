@@ -1,11 +1,17 @@
-import type postgres from 'postgres';
-
 /**
  * Decides whether a destructive database operation (seed, migrate, test cleanup) may run.
  * See docs/adr/0002-explicit-app-env.md: APP_ENV must be explicit, production and a missing value
  * are always refused, test requires the workspace_ai_test database and development a localhost host.
  */
-export type GuardedEnvironment = 'development' | 'test';
+import type postgres from 'postgres';
+
+export type AppEnv = 'development' | 'test' | 'production';
+export type NonProductionAppEnv = Exclude<AppEnv, 'production'>;
+
+/** The one check for "development or test"; anything else, including a missing value, is treated as production. */
+export function isNonProductionAppEnv(appEnv: string | undefined): appEnv is NonProductionAppEnv {
+  return appEnv === 'development' || appEnv === 'test';
+}
 
 export const TEST_DATABASE_NAME = 'workspace_ai_test';
 
@@ -15,7 +21,7 @@ const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '[::1]']);
 export type DatabaseOperationGuardInput = {
   appEnv: string | undefined;
   databaseUrl: string;
-  allow: readonly GuardedEnvironment[];
+  allow: readonly NonProductionAppEnv[];
   currentDatabase: () => Promise<string>;
 };
 
@@ -37,7 +43,7 @@ export async function assertDatabaseOperationAllowed(input: DatabaseOperationGua
   const target = describeTarget(input.appEnv, input.databaseUrl);
   const refuse = (reason: string) => new Error(`Refusing to touch the database: ${reason} (${target.summary})`);
 
-  if (input.appEnv !== 'development' && input.appEnv !== 'test') {
+  if (!isNonProductionAppEnv(input.appEnv)) {
     throw refuse('APP_ENV must be development or test');
   }
   if (!input.allow.includes(input.appEnv)) {
@@ -62,7 +68,7 @@ export async function assertDatabaseOperationAllowed(input: DatabaseOperationGua
 export function assertPostgresOperationAllowed(
   sql: postgres.Sql,
   databaseUrl: string,
-  allow: readonly GuardedEnvironment[],
+  allow: readonly NonProductionAppEnv[],
 ): Promise<void> {
   return assertDatabaseOperationAllowed({
     appEnv: process.env.APP_ENV,
