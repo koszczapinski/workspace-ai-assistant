@@ -31,6 +31,10 @@ beforeAll(() => {
     throw new Error('TEST_DATABASE_URL must point to the dedicated workspace_ai_test database');
   }
 
+  runSeed();
+});
+
+function runSeed() {
   const seed = spawnSync('npm', ['run', 'db:seed'], {
     cwd: process.cwd(),
     env: { ...process.env, DATABASE_URL: testDatabaseUrl },
@@ -38,7 +42,7 @@ beforeAll(() => {
   });
   expect(seed.error).toBeUndefined();
   expect(seed.status).toBe(0);
-});
+}
 
 it.skipIf(!testDatabaseUrl)('checks workspace membership with the real PostgreSQL query', async () => {
   if (!emailA || !emailB) throw new Error('Both demo email environment variables must be set');
@@ -67,7 +71,7 @@ it.skipIf(!testDatabaseUrl)('checks workspace membership with the real PostgreSQ
 
     const rows = await connection<{ workspaceId: string; userId: string }[]>`
       SELECT workspace_id AS "workspaceId", user_id AS "userId"
-      FROM memberships WHERE workspace_id IN ('workspace-a', 'workspace-b')
+      FROM memberships WHERE user_id IN (${userA!.id}, ${userB!.id})
       ORDER BY workspace_id
     `;
     expect(rows).toEqual([
@@ -130,6 +134,28 @@ it.skipIf(!testDatabaseUrl)('seeds each Demo user as the Owner of their own Work
   await expect(queries.ownedWorkspace(b, 'workspace-b')).resolves.toEqual({ id: 'workspace-b', name: 'Harbor Analytics' });
   await expect(queries.ownedWorkspace(a, 'workspace-b')).resolves.toBeNull();
   await expect(queries.ownedWorkspace(b, 'workspace-a')).resolves.toBeNull();
+});
+
+it.skipIf(!testDatabaseUrl)('keeps other Memberships in the demo Workspaces when the seed runs again', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  const a = await userId(emailA!);
+  const b = await userId(emailB!);
+  await withExtraUsers(['reseed-test-member'], 'workspace-a', ['member'], async () => {
+    runSeed();
+    runSeed();
+
+    await expect(queries.authorizedWorkspace('reseed-test-member', 'workspace-a')).resolves.toMatchObject({ id: 'workspace-a', role: 'member' });
+    await expect(queries.ownedWorkspace(a, 'workspace-a')).resolves.toEqual({ id: 'workspace-a', name: 'Northstar Studio' });
+    await expect(queries.ownedWorkspace(b, 'workspace-b')).resolves.toEqual({ id: 'workspace-b', name: 'Harbor Analytics' });
+    const demoRows = await connection!<{ userId: string; workspaceId: string; role: string }[]>`
+      SELECT user_id AS "userId", workspace_id AS "workspaceId", role FROM memberships
+      WHERE user_id IN (${a}, ${b}) ORDER BY workspace_id
+    `;
+    expect(demoRows).toEqual([
+      { userId: a, workspaceId: 'workspace-a', role: 'owner' },
+      { userId: b, workspaceId: 'workspace-b', role: 'owner' },
+    ]);
+  });
 });
 
 it.skipIf(!testDatabaseUrl)('makes a Membership a plain Member by default and not an Owner', async () => {
