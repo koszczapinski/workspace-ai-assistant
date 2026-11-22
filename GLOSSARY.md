@@ -55,7 +55,7 @@ Text owned by a Workspace that the server loads to shape the assistant's respons
 _Avoid_: System prompt, system instructions
 
 **Conversation**:
-The messages exchanged with the assistant in one Workspace, kept only in browser memory. It is never persisted and does not survive a reload, a Workspace change, or sign-out.
+The messages one User exchanges with the assistant in one Workspace, stored in PostgreSQL, owned by that User and visible only to them. A reload restores it. Changing Workspace or signing out clears the screen, and the stored Conversation loads again on return.
 _Avoid_: Session, thread
 
 ### Response lifecycle
@@ -65,5 +65,5 @@ The User's action to end an active response early. The partial text stays visibl
 _Avoid_: Abort, interrupt
 
 **Cancel**:
-The technical ending of an active request when the Workspace changes or the User signs out. Unlike Stop, it clears the Conversation, partial output, and errors, so late chunks can never appear elsewhere.
+The technical ending of an active request when the Workspace changes or the User signs out. Unlike Stop, it clears the Conversation from the screen, along with partial output and errors, so late chunks can never appear elsewhere.
 _Avoid_: Using "cancel" for the User's Stop action

@@ -93,6 +93,8 @@ Given a provider failure, show a useful error and a retry action. Retrying must 
 
 Keep chat state in browser memory only. Reloading the page clears the conversation.
 
+> **Superseded for stored Conversations** by the Persistent Conversations increment (`.scratch/persistent-conversations/spec.md`, ADR-0001): a Conversation is now stored for its User in its Workspace, and a reload restores it. Cancel still applies as written below: changing workspace or signing out clears the screen, and the stored Conversation loads again on return.
+
 Changing workspace or signing out cancels any active request and clears messages, partial output, and errors. Late chunks from an old request must not appear in another workspace.
 
 ## UI Requirements

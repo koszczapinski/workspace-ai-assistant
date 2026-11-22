@@ -12,6 +12,8 @@ import { createInvitationStore } from '../src/lib/invitation-store';
 import { generateInvitationToken, hashInvitationToken } from '../src/lib/invitations';
 import { createConversationQueries } from '../src/lib/conversation-queries';
 import { createConversationListHandler } from '../src/lib/conversation-handlers';
+import { createConversationTurns } from '../src/lib/conversation-turns';
+import { randomUUID } from 'node:crypto';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const emailA = process.env.DEMO_USER_A_EMAIL;
@@ -621,4 +623,61 @@ it.skipIf(!testDatabaseUrl)("deletes only the Session User's own Conversation, a
       await expect(connection!`SELECT 1 FROM messages WHERE id = 'm-delete-mine'`).resolves.toHaveLength(0);
     });
   });
+});
+
+it.skipIf(!testDatabaseUrl)("keeps Demo user A's stored Conversation private to them, messages in turn order", async () => {
+  const database = drizzle(connection!, { schema });
+  const queries = createConversationQueries(database);
+  const a = await userId(emailA!);
+  const b = await userId(emailB!);
+  const id = randomUUID();
+  await withExtraUsers(['conv-private-member'], 'workspace-a', ['member'], async () => {
+    try {
+      // Saved through the real write path; each turn's User message and reply share one timestamp.
+      const turns = createConversationTurns(database);
+      const first = new Date('2030-03-01T09:00:00Z');
+      const second = new Date('2030-03-01T09:05:00Z');
+      await turns.saveTurn({ conversationId: id, userId: a, workspaceId: 'workspace-a', userText: 'Draft the launch note', assistantText: 'Here is a draft.', stopped: false, receivedAt: first, savedAt: first });
+      await turns.saveTurn({ conversationId: id, userId: a, workspaceId: 'workspace-a', userText: 'Shorter, please', assistantText: 'Short draft.', stopped: false, receivedAt: second, savedAt: second });
+
+      const mine = await queries.findConversation(a, 'workspace-a', id);
+      expect(mine).toMatchObject({ id, title: 'Draft the launch note' });
+      expect(mine!.messages.map(m => [m.role, m.content])).toEqual([
+        ['user', 'Draft the launch note'],
+        ['assistant', 'Here is a draft.'],
+        ['user', 'Shorter, please'],
+        ['assistant', 'Short draft.'],
+      ]);
+
+      // Demo user B and a second Member of Workspace A: an empty list, and no row to open (the page's notFound()).
+      const others: Array<[string, string]> = [[b, 'workspace-b'], [b, 'workspace-a'], ['conv-private-member', 'workspace-a']];
+      for (const [who, workspaceId] of others) {
+        await expect(queries.listConversations(who, workspaceId, null)).resolves.toEqual({ conversations: [], nextCursor: null });
+        await expect(queries.findConversation(who, workspaceId, id)).resolves.toBeNull();
+      }
+    } finally {
+      await connection!`DELETE FROM conversations WHERE id = ${id}`;
+    }
+  });
+});
+
+it.skipIf(!testDatabaseUrl)('deleting a Workspace removes its Conversations and their messages', async () => {
+  const database = drizzle(connection!, { schema });
+  const a = await userId(emailA!);
+  const workspaceId = `conv-cascade-${randomUUID()}`;
+  const id = randomUUID();
+  try {
+    await connection!`INSERT INTO workspaces (id, name, assistant_instructions) VALUES (${workspaceId}, 'Cascade', 'Test')`;
+    await connection!`INSERT INTO memberships (id, user_id, workspace_id, role) VALUES (${`m-${workspaceId}`}, ${a}, ${workspaceId}, 'owner')`;
+    const now = new Date();
+    await createConversationTurns(database).saveTurn({ conversationId: id, userId: a, workspaceId, userText: 'Hello', assistantText: 'Hi', stopped: false, receivedAt: now, savedAt: now });
+    await expect(createConversationQueries(database).findConversation(a, workspaceId, id)).resolves.toMatchObject({ messages: [{ content: 'Hello' }, { content: 'Hi' }] });
+
+    await connection!`DELETE FROM workspaces WHERE id = ${workspaceId}`;
+
+    await expect(connection!`SELECT 1 FROM conversations WHERE id = ${id}`).resolves.toHaveLength(0);
+    await expect(connection!`SELECT 1 FROM messages WHERE conversation_id = ${id}`).resolves.toHaveLength(0);
+  } finally {
+    await connection!`DELETE FROM workspaces WHERE id = ${workspaceId}`;
+  }
 });
