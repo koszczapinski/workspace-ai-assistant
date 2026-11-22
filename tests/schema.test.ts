@@ -19,4 +19,13 @@ describe('database schema',()=>{
   expect(message.foreignKeys.map(fk=>fk.onDelete)).toEqual(['cascade']);
   expect(conversation.foreignKeys.map(fk=>fk.onDelete)).toEqual(['cascade','cascade']);
  });
+ it('gives Workspaces three Appearance preset columns whose defaults keep the current look',()=>{
+  const columns=getTableConfig(workspaces).columns;
+  const preset=(name:string)=>columns.find(c=>c.name===name);
+  expect(columns.map(c=>c.name)).toEqual(expect.arrayContaining(['background_preset','font_preset','accent_preset']));
+  for(const [name,value] of [['background_preset','terra'],['font_preset','system'],['accent_preset','sky']] as const){
+   expect(preset(name)).toMatchObject({notNull:true,default:value,dataType:'string'});
+  }
+  expect(getTableConfig(workspaces).checks).toEqual([]);
+ });
 });
