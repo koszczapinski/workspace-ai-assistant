@@ -60,7 +60,7 @@ Run the documented quality checks before considering a change done. A human revi
 
 ### Issue tracker
 
-Issues are local Markdown files under `.scratch/<feature>/`. See `docs/agents/issue-tracker.md`.
+Issues and specs are tracked as GitHub Issues in `koszczapinski/workspace-ai-assistant` (via the `gh` CLI). Older features' tickets remain under `.scratch/` as history. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
