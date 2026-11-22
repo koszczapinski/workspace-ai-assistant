@@ -119,6 +119,6 @@ export const authorizedWorkspace = workspaceQueries.authorizedWorkspace;
 export const ownedWorkspace = workspaceQueries.ownedWorkspace;
 export const workspaceSettings = workspaceQueries.workspaceSettings;
 export const updateWorkspaceSettings = workspaceQueries.updateWorkspaceSettings;
-export const listMembers =workspaceQueries.listMembers;
+export const listMembers = workspaceQueries.listMembers;
 export const changeRole = workspaceQueries.changeRole;
 export const removeMember = workspaceQueries.removeMember;

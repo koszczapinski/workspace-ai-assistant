@@ -26,7 +26,7 @@ Goal: keep the project a portfolio piece that shows depth. One small, finished i
 - Per-Workspace Usage limits (configurable by an Owner).
 - An audit log of Owner actions (settings changes, Membership changes).
 
-RAG and tool use / function calling. They stay out of scope for the current version (`AGENTS.md`), but they are not ruled out of future iterations. Their order and scope get decided in a later grilling round, once the three increments above are done.
+RAG and tool use / function calling. They stay out of scope for the current version (`AGENTS.md`), but they are not ruled out of future iterations. Their order and scope get decided in a later grilling round, once the four increments above are done.
 
 ## Not planned
 
