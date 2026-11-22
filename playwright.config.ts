@@ -28,7 +28,6 @@ export default defineConfig({
     env: {
       ...(process.env.DATABASE_URL ? { DATABASE_URL: process.env.DATABASE_URL } : {}),
       ...(process.env.BETTER_AUTH_SECRET ? { BETTER_AUTH_SECRET: process.env.BETTER_AUTH_SECRET } : {}),
-      APP_ENV: 'test',
       BETTER_AUTH_URL: baseURL,
       OPENAI_API_KEY: '',
       CHAT_FAKE_PROVIDER: 'true',
