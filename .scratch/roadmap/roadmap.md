@@ -9,7 +9,7 @@ Goal: keep the project a portfolio piece that shows depth. One small, finished i
 1. **Abuse protection**: unblocks a public demo (the spec forbids a public paid AI endpoint without limits).
    - Per-User request rate limit plus a daily message cap per Workspace, counted in PostgreSQL (no Redis).
    - `429` with a clear message in the UI.
-2. **Persistent Conversations**: see `docs/adr/0001-persist-conversations-privately.md` (proposed).
+2. **Persistent Conversations** — specified in `.scratch/persistent-conversations/`. Decision: `docs/adr/0001-persist-conversations-privately.md` (accepted 2026-11-22).
    - Owned by one User in one Workspace, private to that User; the User can delete their own, deleting a Workspace cascades.
    - Store completed and Stopped messages (Stopped marked), not provider errors; no automatic expiry.
    - Title is the truncated first message; the Workspace view gets a Conversations list and "New conversation".

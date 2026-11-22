@@ -1,5 +1,6 @@
 ---
-status: proposed
+status: accepted
+date: 2026-11-22
 ---
 
 # Persist Conversations privately per User and Workspace
@@ -16,3 +17,5 @@ The MVP keeps the Conversation in browser memory only. The post-MVP roadmap reve
 - Schema and migrations change; deleting a Conversation (by its User) and deleting a Workspace (cascade) must remove stored messages.
 - Cancel (Workspace change, sign-out) still clears only the UI state; the stored Conversation is reloaded from the server on return.
 - `GLOSSARY.md` (Conversation) and the "do not persist" rules in `AGENTS.md` and `docs/spec.md` change together with the persistence ticket.
+
+Accepted on 2026-11-22. Spec and tickets: `.scratch/persistent-conversations/`.
