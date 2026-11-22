@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { ArrowLeft, Check, CircleAlert, LoaderCircle, MessagesSquare, Send, Sparkles, Square, SquarePen, Trash2, Users } from 'lucide-react';
+import { ArrowLeft, Check, CircleAlert, LoaderCircle, MessagesSquare, Pencil, Send, Sparkles, Square, SquarePen, Trash2, Users } from 'lucide-react';
 import { useChat } from '@ai-sdk/react';
 import { APICallError, type ChatTransport, type UIMessage } from 'ai';
 import { useEffect, useRef, useState } from 'react';
@@ -56,6 +56,7 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
   const [listOpen, setListOpen] = useState(false);
   const [listError, setListError] = useState<string | null>(null);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [editing, setEditing] = useState<{ id: string; value: string; saving: boolean; error: string | null } | null>(null);
 
   // A navigation brings fresh server props: show what the server opened.
   const [served, setServed] = useState({ conversations, conversation });
@@ -130,6 +131,39 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
     }
   }
 
+  /** Saves a new Title; the list then shows exactly what the server stored. A failure keeps the old Title. */
+  async function rename(conversationId: string, value: string) {
+    setEditing({ id: conversationId, value, saving: true, error: null });
+    const response = await fetch(`/api/workspaces/${id}/conversations/${encodeURIComponent(conversationId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: value }),
+    }).catch(() => null);
+
+    if (response?.status === 404) {
+      // Gone for this User: same as a delete elsewhere.
+      setEditing(null);
+      setList(previous => ({ ...previous, conversations: previous.conversations.filter(entry => entry.id !== conversationId) }));
+      if (conversationId === openId) startNewConversation('replace');
+      return;
+    }
+    const stored: unknown = response?.ok ? await response.json().catch(() => null) : null;
+    const title = typeof (stored as { title?: unknown } | null)?.title === 'string' ? (stored as { title: string }).title : null;
+    if (title === null) {
+      const tooLong = response?.status === 400;
+      setEditing({
+        id: conversationId, value, saving: false,
+        error: tooLong ? 'Could not rename the conversation. Use at most 100 characters.' : 'Could not rename the conversation. Try again.',
+      });
+      return;
+    }
+    setEditing(null);
+    setList(previous => ({
+      ...previous,
+      conversations: previous.conversations.map(entry => entry.id === conversationId ? { ...entry, title } : entry),
+    }));
+  }
+
   async function remove(conversationId: string) {
     setListError(null);
     const response = await fetch(`/api/workspaces/${id}/conversations/${encodeURIComponent(conversationId)}`, { method: 'DELETE' }).catch(() => null);
@@ -166,7 +200,27 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
               {list.conversations.map(entry => {
                 const current = entry.id === openId;
                 return (
-                  <li key={entry.id} className={`group flex items-center gap-1 rounded-xl ${current ? 'bg-muted' : 'hover:bg-muted/60'}`}>
+                  <li key={entry.id} className={`group flex flex-wrap items-center gap-1 rounded-xl ${current ? 'bg-muted' : 'hover:bg-muted/60'}`}>
+                    {editing?.id === entry.id ? (
+                      <>
+                        <Input
+                          aria-label="Conversation title"
+                          aria-invalid={editing.error ? true : undefined}
+                          autoFocus
+                          value={editing.value}
+                          disabled={editing.saving}
+                          className="mx-1 h-8 min-w-0 flex-1 text-sm"
+                          onChange={event => setEditing({ ...editing, value: event.target.value, error: null })}
+                          onBlur={() => { if (!editing.saving) setEditing(null); }}
+                          onKeyDown={event => {
+                            if (event.key === 'Enter') { event.preventDefault(); void rename(entry.id, editing.value); }
+                            else if (event.key === 'Escape') setEditing(null);
+                          }}
+                        />
+                        {editing.error && <p role="alert" className="w-full px-3 pb-1 text-xs text-destructive">{editing.error}</p>}
+                      </>
+                    ) : (
+                    <>
                     <Link
                       href={conversationPath(entry.id)}
                       aria-current={current ? 'page' : undefined}
@@ -181,12 +235,24 @@ function WorkspaceChat({ id, name, isOwner, transport, conversations = NO_CONVER
                       type="button"
                       variant="ghost"
                       size="icon-sm"
+                      aria-label={`Rename conversation: ${entry.title}`}
+                      className={`rounded-full text-muted-foreground ${focusRing}`}
+                      onClick={() => setEditing({ id: entry.id, value: entry.title, saving: false, error: null })}
+                    >
+                      <Pencil aria-hidden="true" className="size-3.5" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
                       aria-label={`Delete conversation: ${entry.title}`}
                       className={`mr-1 rounded-full text-muted-foreground hover:text-destructive ${focusRing}`}
                       onClick={() => remove(entry.id)}
                     >
                       <Trash2 aria-hidden="true" className="size-3.5" />
                     </Button>
+                    </>
+                    )}
                   </li>
                 );
               })}

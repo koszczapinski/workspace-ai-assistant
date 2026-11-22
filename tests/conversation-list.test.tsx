@@ -259,6 +259,82 @@ describe('the Conversation list in the Workspace', () => {
     expect(router.replace).toHaveBeenCalledWith('/w/workspace-a');
   });
 
+  describe('renaming', () => {
+    const renderList = () => render(<Chat id="workspace-a" name="Workspace A" transport={controlledTransport().transport}
+      conversations={list('Launch plan', 'Pricing')} />);
+    const startRename = (title: string) => {
+      fireEvent.click(screen.getByRole('button', { name: `Rename conversation: ${title}` }));
+      return screen.getByRole('textbox', { name: 'Conversation title' });
+    };
+
+    it('edits the Title in an input pre-filled with the current one and saves it with Enter', async () => {
+      const fetch = vi.fn<typeof globalThis.fetch>(async () => Response.json({ title: 'Stored by server' }));
+      vi.stubGlobal('fetch', fetch);
+      renderList();
+
+      const input = startRename('Pricing');
+      expect(input).toHaveValue('Pricing');
+      fireEvent.change(input, { target: { value: '  Price list ' } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      await within(conversationList()).findByRole('link', { name: 'Stored by server' });
+      expect(fetch).toHaveBeenCalledWith('/api/workspaces/workspace-a/conversations/conv-2', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: '  Price list ' }),
+      });
+      expect(screen.queryByRole('textbox', { name: 'Conversation title' })).not.toBeInTheDocument();
+      expect(within(conversationList()).getAllByRole('link').map(link => link.textContent)).toEqual(['Launch plan', 'Stored by server']);
+    });
+
+    it('cancels with Escape and with blur, keeping the Title and sending nothing', () => {
+      const fetch = vi.fn();
+      vi.stubGlobal('fetch', fetch);
+      renderList();
+
+      const input = startRename('Pricing');
+      fireEvent.change(input, { target: { value: 'Something else' } });
+      fireEvent.keyDown(input, { key: 'Escape' });
+      expect(screen.queryByRole('textbox', { name: 'Conversation title' })).not.toBeInTheDocument();
+      expect(within(conversationList()).getByRole('link', { name: 'Pricing' })).toBeVisible();
+
+      fireEvent.blur(startRename('Launch plan'));
+      expect(screen.queryByRole('textbox', { name: 'Conversation title' })).not.toBeInTheDocument();
+      expect(within(conversationList()).getByRole('link', { name: 'Launch plan' })).toBeVisible();
+      expect(fetch).not.toHaveBeenCalled();
+    });
+
+    it('keeps the old Title and shows an error when saving fails', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Title must be text of at most 100 characters' }, { status: 400 })));
+      renderList();
+
+      const input = startRename('Pricing');
+      fireEvent.change(input, { target: { value: 'x'.repeat(101) } });
+      fireEvent.keyDown(input, { key: 'Enter' });
+
+      expect(await within(conversationList()).findByRole('alert')).toHaveTextContent('Could not rename the conversation');
+      expect(screen.getByRole('textbox', { name: 'Conversation title' })).toHaveValue('x'.repeat(101));
+      fireEvent.keyDown(screen.getByRole('textbox', { name: 'Conversation title' }), { key: 'Escape' });
+      expect(within(conversationList()).getByRole('link', { name: 'Pricing' })).toBeVisible();
+    });
+
+    it('keeps the old Title when the request itself fails', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('offline'); }));
+      renderList();
+
+      fireEvent.keyDown(startRename('Pricing'), { key: 'Enter' });
+      expect(await within(conversationList()).findByRole('alert')).toHaveTextContent('Could not rename the conversation');
+    });
+
+    it('drops a Conversation that no longer exists for this User', async () => {
+      vi.stubGlobal('fetch', vi.fn(async () => Response.json({ error: 'Not found' }, { status: 404 })));
+      renderList();
+
+      fireEvent.keyDown(startRename('Pricing'), { key: 'Enter' });
+      await waitFor(() => expect(within(conversationList()).queryByRole('link', { name: 'Pricing' })).not.toBeInTheDocument());
+    });
+  });
+
   it('deletes another Conversation without touching the open one', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(null, { status: 204 })));
     render(<Chat id="workspace-a" name="Workspace A" transport={controlledTransport().transport}
