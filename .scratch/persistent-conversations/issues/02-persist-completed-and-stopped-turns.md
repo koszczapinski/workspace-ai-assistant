@@ -4,7 +4,7 @@
 
 **Blocked by:** 01 (Schema for Conversations and messages).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] The chat request may include a Conversation id. With none, a successful save creates the Conversation. With one, the server continues it only when that Conversation belongs to the Session's User in the authorized Workspace.
 - [ ] A missing or foreign Conversation id is a `404` that does not reveal whether the Conversation exists. It is decided before the Usage limiter and the provider, and it consumes no Usage limit. A foreign Workspace still returns `403`, as today.
@@ -17,3 +17,7 @@
 - [ ] The server generates the Conversation id, and the client has it by the time the composer accepts the next message. The User id comes from the Session. Message content is not logged. A Conversation with no saved turn does not appear.
 - [ ] The fake provider used by tests and CI invokes the same save when its stream finishes or is Stopped.
 - [ ] Typecheck, lint, the existing tests, and the production build pass, including the existing Playwright journeys.
+
+## Comments
+
+- Resolved on branch feat/persistent-conversations in d5c8faa, 2205831.

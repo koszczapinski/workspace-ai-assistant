@@ -4,7 +4,7 @@
 
 **Blocked by:** 02 (Persist a completed or Stopped turn), 03 (List and load a User's Conversations), 04 (Conversation list in the Workspace).
 
-**Status:** ready-for-agent
+**Status:** resolved
 
 - [ ] An integration test against the isolated test database, with the existing safeguards (dedicated test database only, never a development or production database), shows that Demo user A's Conversation in Workspace A is absent for Demo user B and absent for a second Member of Workspace A. Absence is an empty result, the condition the page turns into `notFound()`.
 - [ ] That test shows messages loading in `created_at` order, with the User message of a turn before that turn's assistant reply, and shows that deleting the Workspace removes its Conversations and their messages.
@@ -16,3 +16,7 @@
 - [ ] The README's limitations and the two-minute demo script say that a reload keeps the Conversation.
 - [ ] The persistent-Conversations item in the roadmap is marked implemented.
 - [ ] Typecheck, lint, unit and integration tests, Playwright, and the production build pass.
+
+## Comments
+
+- Resolved on branch feat/persistent-conversations in 529a1ee, f729715.
