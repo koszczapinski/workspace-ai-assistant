@@ -32,8 +32,7 @@ jobs:
       DEMO_USER_A_PASSWORD: ci-only-user-a-password
       DEMO_USER_B_EMAIL: user-b@example.test
       DEMO_USER_B_PASSWORD: ci-only-user-b-password
-      CHAT_FAKE_PROVIDER: 'true'
-      OPENAI_API_KEY: ''
+      AI_PROVIDER: fake
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
