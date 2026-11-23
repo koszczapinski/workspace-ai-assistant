@@ -248,3 +248,30 @@ describe('openai-compatible provider', () => {
     expect(error?.message).not.toMatch(/secret/);
   });
 });
+
+describe('provider failure mid-stream', () => {
+  const FIXED_MESSAGE = 'The assistant is unavailable right now. Try again.';
+  const secrets = ['secret-host', 'sk-secret-key', 'secret prompt text'];
+  const secretMessage: UIMessage = { id: 'u', role: 'user', parts: [{ type: 'text', text: 'secret prompt text' }] };
+  const cases: Array<[string, Record<string, string>, () => Promise<Response>]> = [
+    ['openai, unreachable', { AI_PROVIDER: 'openai', AI_MODEL: 'm', AI_API_KEY: 'sk-secret-key' }, async () => { throw new TypeError('connect ECONNREFUSED secret-host:1234 sk-secret-key'); }],
+    ['openai, error response', { AI_PROVIDER: 'openai', AI_MODEL: 'm', AI_API_KEY: 'sk-secret-key' }, async () => new Response(JSON.stringify({ error: { message: 'Bad key sk-secret-key at secret-host' } }), { status: 401, headers: { 'content-type': 'application/json' } })],
+    ['openai-compatible, unreachable', { AI_PROVIDER: 'openai-compatible', AI_BASE_URL: 'http://secret-host:1234/v1', AI_MODEL: 'm' }, async () => { throw new TypeError('fetch failed secret-host'); }],
+    ['openai-compatible, error response', { AI_PROVIDER: 'openai-compatible', AI_BASE_URL: 'http://secret-host:1234/v1', AI_MODEL: 'm' }, async () => new Response('secret-host rejected the request', { status: 400 })],
+  ];
+
+  it.each(cases)('sends only the fixed message for %s', async (_name, env, fetchImpl) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+    vi.stubGlobal('fetch', vi.fn(fetchImpl));
+    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    const chunks = await readAll(await streamAssistant({ instructions: 'Demo', messages: [secretMessage] }));
+
+    const errors = chunks.filter(chunk => chunk.type === 'error');
+    expect(errors).toEqual([{ type: 'error', errorText: FIXED_MESSAGE }]);
+    for (const secret of secrets) {
+      expect(JSON.stringify(chunks)).not.toContain(secret);
+      expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
+    }
+  });
+});
