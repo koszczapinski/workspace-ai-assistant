@@ -16,10 +16,13 @@ type WorkspaceSettingsDeps = {
 
 type Context = { params: Promise<{ workspaceId: string }> };
 
+/** The one Workspace name rule: Workspace settings and the bootstrap script both use it. */
+export const workspaceNameSchema = z.string('Name is required.').trim()
+  .min(1, 'Name is required.')
+  .max(NAME_MAX, `Name must be at most ${NAME_MAX} characters.`);
+
 const settingsSchema = z.object({
-  name: z.string('Name is required.').trim()
-    .min(1, 'Name is required.')
-    .max(NAME_MAX, `Name must be at most ${NAME_MAX} characters.`),
+  name: workspaceNameSchema,
   assistantInstructions: z.string('Assistant instructions are required.').trim()
     .min(1, 'Assistant instructions are required.')
     .max(INSTRUCTIONS_MAX, `Assistant instructions must be at most ${INSTRUCTIONS_MAX} characters.`),

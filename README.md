@@ -36,6 +36,16 @@ APP_ENV=production DATABASE_URL=... npm run db:migrate -- --confirm-database <na
 
 `<name>` must equal the database in `DATABASE_URL` and the name the live connection reports (`current_database()`). Otherwise the command refuses and changes nothing. A missing or unknown `APP_ENV` is refused with or without the flag, and the flag does not relax the development or test rules. `db:seed` never runs in production. See the note in `docs/adr/0002-explicit-app-env.md`.
 
+**Deployer: first run (bootstrap).** On a migrated database, create the first Workspace and its Owner Invitation:
+
+```bash
+npm run bootstrap -- --workspace "Acme" [--confirm-database <name>]
+```
+
+It prints "Created Workspace". If the 7 days pass before anyone opens the link, run the command again (`--workspace` is optional now): while the one Workspace still has no Owner, it creates nothing, prints "Re-issued the Owner Invitation", and gives a fresh link; earlier pending bootstrap Invitations are revoked, so only the newest link works. If `--workspace` is given it must equal the existing name (nothing is renamed). Once the Workspace has an Owner, or when more than one Workspace exists, it refuses and writes nothing.
+
+It prints a single-use Owner Invitation link, valid for 7 days, once; only a hash of its token is stored, so copy it now. The link is built from `BETTER_AUTH_URL`, which must be the public address of the app. Open it, create your account, and you are the Owner of the Workspace. The command uses the same database confirmation as `db:migrate` (`--confirm-database` is required with `APP_ENV=production`), validates the name like Workspace settings (1 to 60 characters), and never creates a second Workspace. Further Members come from the Invitations screen; an Owner promotes a Member to Owner on the Members screen.
+
 Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
 
 ## Local model with LM Studio
