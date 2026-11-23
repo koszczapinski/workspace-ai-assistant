@@ -223,7 +223,7 @@ it.skipIf(!testDatabaseUrl)('stores an Invitation with only the token hash and l
   const owner = await userId(emailA!);
   try {
     const token = generateInvitationToken();
-    const created = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken(token), expiresAt: futureDays(7) });
+    const created = await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken(token), expiresAt: futureDays(7) });
 
     const rows = await connection!`SELECT * FROM invitations WHERE id = ${created.id}`;
     expect(rows).toHaveLength(1);
@@ -243,8 +243,8 @@ it.skipIf(!testDatabaseUrl)('hides expired Invitations from the pending list and
   const store = createInvitationStore(drizzle(connection!, { schema }));
   const owner = await userId(emailA!);
   try {
-    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('expired-one'), expiresAt: futureDays(-1) });
-    const live = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('live-one'), expiresAt: futureDays(3) });
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken('expired-one'), expiresAt: futureDays(-1) });
+    const live = await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken('live-one'), expiresAt: futureDays(3) });
 
     expect((await store.listPending('workspace-a', new Date())).map(i => i.id)).toEqual([live.id]);
     await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('expired-one'), extraAcceptEmails[0]!))).resolves.toEqual({ kind: 'invalid-link' });
@@ -258,7 +258,7 @@ it.skipIf(!testDatabaseUrl)('revokes a pending Invitation only within its own Wo
   const store = createInvitationStore(drizzle(connection!, { schema }));
   const owner = await userId(emailA!);
   try {
-    const created = await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('to-revoke'), expiresAt: futureDays(7) });
+    const created = await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken('to-revoke'), expiresAt: futureDays(7) });
 
     await expect(store.revoke('workspace-b', created.id, new Date())).resolves.toBe(false);
     expect(await store.listPending('workspace-a', new Date())).toHaveLength(1);
@@ -287,7 +287,7 @@ it.skipIf(!testDatabaseUrl)('refuses an already used Invitation', async () => {
   const store = createInvitationStore(drizzle(connection!, { schema }));
   const owner = await userId(emailA!);
   try {
-    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('used-once'), expiresAt: futureDays(7) });
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken('used-once'), expiresAt: futureDays(7) });
     await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('used-once'), extraAcceptEmails[0]!))).resolves.toMatchObject({ kind: 'accepted' });
     await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('used-once'), extraAcceptEmails[1]!))).resolves.toEqual({ kind: 'invalid-link' });
     await expect(connection!`SELECT 1 FROM "user" WHERE email = ${extraAcceptEmails[1]!}`).resolves.toHaveLength(0);
@@ -301,7 +301,7 @@ it.skipIf(!testDatabaseUrl)('lets an Invitation be used once even under simultan
   const store = createInvitationStore(drizzle(pool, { schema }));
   const owner = await userId(emailA!);
   try {
-    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('single-use'), expiresAt: futureDays(7) });
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken('single-use'), expiresAt: futureDays(7) });
 
     const results = await Promise.all(extraAcceptEmails.map(email => store.acceptWithAccount(acceptInput(hashInvitationToken('single-use'), email))));
     expect(results.filter(result => result.kind === 'accepted')).toHaveLength(1);
@@ -416,7 +416,7 @@ it.skipIf(!testDatabaseUrl)('creates the account, the Member Membership and cons
   const pool = postgres(testDatabaseUrl!, { max: 2 });
   try {
     const store = createInvitationStore(drizzle(pool, { schema }));
-    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-ok'), expiresAt: futureDays(7) });
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken('accept-ok'), expiresAt: futureDays(7) });
     const { hashPassword } = await import('better-auth/crypto');
 
     const result = await store.acceptWithAccount({ ...acceptInput(hashInvitationToken('accept-ok'), acceptEmails[0]!), passwordHash: await hashPassword('brand-new-password') });
@@ -448,7 +448,7 @@ it.skipIf(!testDatabaseUrl)('fails for an email that already has an account with
   const pool = postgres(testDatabaseUrl!, { max: 2 });
   try {
     const store = createInvitationStore(drizzle(pool, { schema }));
-    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-dup'), expiresAt: futureDays(7) });
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken('accept-dup'), expiresAt: futureDays(7) });
     await expect(store.acceptWithAccount(acceptInput(hashInvitationToken('accept-dup'), emailB!))).resolves.toEqual({ kind: 'email-unavailable' });
     await expect(store.findPending(hashInvitationToken('accept-dup'), new Date())).resolves.toMatchObject({ workspaceId: 'workspace-a' });
     const [{ users }] = await connection!<{ users: number }[]>`SELECT count(*)::int AS users FROM "user" WHERE id = ${`acc-${emailB}`}`;
@@ -464,7 +464,7 @@ it.skipIf(!testDatabaseUrl)('lets only one of several simultaneous acceptances w
   const pool = postgres(testDatabaseUrl!, { max: 6 });
   try {
     const store = createInvitationStore(drizzle(pool, { schema }));
-    await store.create({ workspaceId: 'workspace-a', createdBy: owner, tokenHash: hashInvitationToken('accept-race'), expiresAt: futureDays(7) });
+    await store.create({ workspaceId: 'workspace-a', createdBy: owner, role: 'member', tokenHash: hashInvitationToken('accept-race'), expiresAt: futureDays(7) });
     const emails = [acceptEmails[2]!, acceptEmails[3]!, acceptEmails[2]!, acceptEmails[3]!];
     const results = await Promise.all(emails.map(email => store.acceptWithAccount(acceptInput(hashInvitationToken('accept-race'), email))));
     expect(results.filter(r => r.kind === 'accepted')).toHaveLength(1);

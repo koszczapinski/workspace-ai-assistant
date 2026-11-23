@@ -13,7 +13,7 @@ function setup(who: Who) {
     if (who === 'anonymous') return { kind: 'unauthenticated' };
     return owners[workspaceId] === who ? { kind: 'owner', userId: who, workspace: { id: workspaceId, name: workspaceId } } : { kind: 'forbidden' };
   });
-  const created: { workspaceId: string; createdBy: string; tokenHash: string; expiresAt: Date }[] = [];
+  const created: { workspaceId: string; createdBy: string; role: string; tokenHash: string; expiresAt: Date }[] = [];
   const store: InvitationStore = {
     create: vi.fn(async input => { created.push(input); return { id: `inv-${created.length}`, expiresAt: input.expiresAt }; }),
     listPending: vi.fn(async (workspaceId: string) => workspaceId === 'workspace-a' ? [{ id: 'inv-x', expiresAt: new Date(NOW.getTime() + DAY) }] : []),
@@ -38,7 +38,7 @@ describe('create invitation', () => {
     expect(body.link).toBe('http://localhost:3000/invite/fixed-token-value');
     expect(body.expiresAt).toBe(new Date(NOW.getTime() + 7 * DAY).toISOString());
     expect(created).toEqual([{
-      workspaceId: 'workspace-a', createdBy: 'owner-a', tokenHash: hashInvitationToken('fixed-token-value'),
+      workspaceId: 'workspace-a', createdBy: 'owner-a', role: 'member', tokenHash: hashInvitationToken('fixed-token-value'),
       expiresAt: new Date(NOW.getTime() + 7 * DAY),
     }]);
     expect(JSON.stringify(created)).not.toContain('fixed-token-value');
@@ -48,7 +48,7 @@ describe('create invitation', () => {
     const { handlers, created } = setup('owner-a');
     await handlers.create(post({ userId: 'someone-else', role: 'owner', workspaceId: 'workspace-b', createdBy: 'x' }), 'workspace-a');
     expect(created).toHaveLength(1);
-    expect(created[0]).toMatchObject({ workspaceId: 'workspace-a', createdBy: 'owner-a' });
+    expect(created[0]).toMatchObject({ workspaceId: 'workspace-a', createdBy: 'owner-a', role: 'member' });
   });
 
   it.each([['member', 403], ['stranger', 403], ['anonymous', 401]] as const)('rejects %s with %i and stores nothing', async (who, status) => {

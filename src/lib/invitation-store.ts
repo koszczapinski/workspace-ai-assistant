@@ -12,9 +12,9 @@ export function createInvitationStore(database: typeof db): InvitationStore & Ac
     return { create: unavailable, listPending: async () => [], revoke: async () => false, findPending: async () => null, acceptWithAccount: unavailable };
   }
   return {
-    async create({ workspaceId, createdBy, tokenHash, expiresAt }) {
+    async create({ workspaceId, createdBy, role, tokenHash, expiresAt }) {
       const [row] = await database.insert(invitations)
-        .values({ id: randomUUID(), workspaceId, createdBy, tokenHash, expiresAt })
+        .values({ id: randomUUID(), workspaceId, createdBy, role, tokenHash, expiresAt })
         .returning({ id: invitations.id, expiresAt: invitations.expiresAt });
       return row!;
     },
@@ -46,14 +46,14 @@ export function createInvitationStore(database: typeof db): InvitationStore & Ac
           const [consumed] = await tx.update(invitations)
             .set({ status: 'accepted', acceptedAt: now })
             .where(and(eq(invitations.tokenHash, tokenHash), eq(invitations.status, 'pending'), gt(invitations.expiresAt, now)))
-            .returning({ workspaceId: invitations.workspaceId });
+            .returning({ workspaceId: invitations.workspaceId, role: invitations.role });
           if (!consumed) return { kind: 'invalid-link' } as const;
 
           const created = await tx.insert(user).values({ id: userId, name, email, emailVerified: false })
             .onConflictDoNothing({ target: user.email }).returning({ id: user.id });
           if (created.length === 0) throw rollback; // undoes the consumption above
           await tx.insert(account).values({ id: randomUUID(), userId, accountId: userId, providerId: 'credential', password: passwordHash });
-          await tx.insert(memberships).values({ id: randomUUID(), userId, workspaceId: consumed.workspaceId, role: 'member' });
+          await tx.insert(memberships).values({ id: randomUUID(), userId, workspaceId: consumed.workspaceId, role: consumed.role });
           return { kind: 'accepted', workspaceId: consumed.workspaceId } as const;
         });
       } catch (error) {
