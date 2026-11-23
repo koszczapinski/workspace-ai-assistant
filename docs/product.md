@@ -19,6 +19,7 @@ It stays a small, finished codebase: one increment at a time, each its own PR wi
 ## Current capabilities
 
 - Login; Workspace list; streamed chat in `/w/[workspaceId]` with Stop and Retry.
+- Assistant replies and the Reasoning trace render a safe Markdown subset; User messages stay plain text (ADR-0006).
 - Persistent, private Conversations with a list, rename and delete.
 - Owner and Member roles; single-use Invitations; members screen.
 - Workspace settings: name and Assistant instructions (ADR-0004); Appearance presets (ADR-0003).

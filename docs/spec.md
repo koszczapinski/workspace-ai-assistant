@@ -107,7 +107,7 @@ Changing workspace or signing out cancels any active request and clears messages
 - Support keyboard navigation and visible focus.
 - Announce loading and error states accessibly without announcing every token.
 - Keep long messages readable on mobile and desktop.
-- Render model output safely. Plain text is sufficient; do not render raw HTML.
+- Render model output safely. Plain text is sufficient; do not render raw HTML. (Superseded by ADR-0006: assistant replies render a safe Markdown subset; raw HTML is still never rendered.)
 
 ## Architecture
 

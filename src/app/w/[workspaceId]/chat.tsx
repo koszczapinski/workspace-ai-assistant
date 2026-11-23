@@ -9,6 +9,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { BrandLogo } from '@/components/brand-logo';
+import { SafeMarkdown } from '@/components/safe-markdown';
 import { chatMessageMetadata, messageText } from '@/lib/chat-message';
 import { createChatTransport } from '@/lib/chat-transport';
 import { conversationTitle } from '@/lib/conversation-title';
@@ -438,9 +439,15 @@ function ConversationPane({ id, name, transport, conversation, restart, onSaved,
               <p className="mb-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
                 {message.role === 'user' ? 'You' : 'Assistant'}
               </p>
-              <p className="whitespace-pre-wrap text-sm leading-7 sm:text-base">
-                {message.parts.map((part, index) => part.type === 'text' ? <span key={index}>{part.text}</span> : null)}
-              </p>
+              {message.role === 'user' ? (
+                <p className="whitespace-pre-wrap text-sm leading-7 sm:text-base">
+                  {message.parts.map((part, index) => part.type === 'text' ? <span key={index}>{part.text}</span> : null)}
+                </p>
+              ) : (
+                <div className="text-sm leading-7 sm:text-base">
+                  <SafeMarkdown text={messageText(message)} streaming={active && currentResponse?.id === message.id} />
+                </div>
+              )}
               {message.role === 'assistant' && (() => {
                 const reasoningParts = message.parts.filter(part => part.type === 'reasoning');
                 const reasoning = reasoningParts.map(part => part.text).join('');
@@ -461,7 +468,7 @@ function ConversationPane({ id, name, transport, conversation, restart, onSaved,
                       </TraceLine>
                     </TraceCollapsibleTrigger>
                     <TraceCollapsibleContent>
-                      <p className="whitespace-pre-wrap text-sm">{reasoning}</p>
+                      <div className="text-sm"><SafeMarkdown text={reasoning} streaming={reasoningRunning} /></div>
                     </TraceCollapsibleContent>
                   </TraceCollapsible>
                 );

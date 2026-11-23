@@ -112,4 +112,28 @@ describe('Trace chat activity', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Retry response' }));
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Thinking…'));
   });
+
+  it('renders assistant replies as Markdown, keeps the User message literal and keeps a stopped partial rendered', async () => {
+    const stream = controlledTransport();
+    render(<Chat id="workspace-a" name="Workspace A" transport={stream.transport} />);
+    fireEvent.change(screen.getByLabelText('Message'), { target: { value: '**mine**' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Thinking…'));
+
+    await act(async () => {
+      stream.chunk({ type: 'start', messageId: 'assistant-md' });
+      stream.chunk({ type: 'text-start', id: 'answer-md' });
+      stream.chunk({ type: 'text-delta', id: 'answer-md', delta: 'Some **done** and **partial' });
+    });
+
+    const reply = await screen.findByLabelText('Assistant response');
+    expect(reply.querySelector('strong')).toHaveTextContent('done');
+    expect(screen.getByLabelText('Your message')).toHaveTextContent('**mine**');
+    expect(screen.getByLabelText('Your message').querySelector('strong')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stop response' }));
+    await waitFor(() => expect(screen.getByText('Response stopped.')).toBeInTheDocument());
+    expect(screen.getByLabelText('Assistant response')).toHaveTextContent('Some done and **partial');
+    expect(screen.getByLabelText('Assistant response').querySelector('strong')).toHaveTextContent('done');
+  });
 });
