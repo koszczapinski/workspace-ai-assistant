@@ -1,0 +1,65 @@
+# The one supported deploy path: `docker compose up --build` (README: "Run with Docker Compose").
+# Configuration comes from `.env` (copy .env.compose.example). Nothing secret is baked into the image.
+#
+# Migration runs as a one-shot service with APP_ENV=production and
+# `--confirm-database "$POSTGRES_DB"`: the database host is the container name `db`, which is not
+# local, so the confirmed production path of ADR-0002 is the only one that applies. The app starts
+# only after it completes. The seed is never run and no Demo users are created.
+
+name: workspace-ai-assistant
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-workspace_ai}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (URL-safe characters only)}
+      POSTGRES_DB: ${POSTGRES_DB:-workspace_ai}
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  migrate:
+    build:
+      context: .
+      target: migrate
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-workspace_ai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-workspace_ai}
+      POSTGRES_DB: ${POSTGRES_DB:-workspace_ai}
+    # sh -c so the confirmed name is read from the container environment and can never differ from the database created above.
+    command: ["sh", "-c", "npm run db:migrate -- --confirm-database \"$$POSTGRES_DB\""]
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+      target: runtime
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-workspace_ai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-workspace_ai}
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (at least 32 random characters)}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      AI_PROVIDER: ${AI_PROVIDER:?Set AI_PROVIDER in .env (openai or openai-compatible; fake is refused in production)}
+      AI_MODEL: ${AI_MODEL:?Set AI_MODEL in .env}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      USAGE_LIMIT_USER_PER_MINUTE: ${USAGE_LIMIT_USER_PER_MINUTE:-10}
+      USAGE_LIMIT_WORKSPACE_PER_DAY: ${USAGE_LIMIT_WORKSPACE_PER_DAY:-200}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  db-data:
