@@ -57,7 +57,7 @@ lms load google/gemma-3-12b --context-length 16384
 
 Confirm the loaded context in the `CONTEXT` column of `lms ps`; it should read `16384`, not `4096`.
 
-A larger context uses more RAM (the model's KV cache grows with it). On a 24 GB Mac, `16384` is a sensible value for a 12B model such as `google/gemma-3-12b`; go higher only if you have memory to spare. To check before loading, add `--estimate-only` to `lms load`; the estimate is approximate.
+A larger context uses more RAM (the model's KV cache grows with it). On a 24 GB Mac, `16384` is a sensible value for a 12B model such as `google/gemma-3-12b`; go higher only if you have memory to spare. 16384 covers typical Conversations but not a request at the maximum size above (roughly 30,000 tokens), so very long Conversations can still overflow it. To check before loading, add `--estimate-only` to `lms load`; the estimate is approximate.
 
 ### Manual smoke test
 
