@@ -17,9 +17,15 @@ Requirements: Node.js 20+, PostgreSQL listening on localhost port 5433 (the port
    npm run db:seed
    ```
 
-4. Start the app with `npm run dev` and open <http://localhost:3000>.
+4. Configure the AI provider in `.env.local` (see `.env.example`). There are no defaults, and a missing or invalid value is an error that names the variable:
+   - `AI_PROVIDER=openai` needs `AI_MODEL` (for example `gpt-4o-mini`) and `AI_API_KEY`.
+   - `AI_PROVIDER=fake` is a deterministic demo stream, allowed only when `APP_ENV` is `development` or `test`. `AI_FAKE_DELAY_MS` (default `120`) sets its pause before each chunk.
 
-The repeatable seed creates User A/Northstar Studio and User B/Harbor Analytics with separate workspace instructions. `OPENAI_API_KEY` is needed only for an owner-run live-provider smoke test. Never use production credentials in local or automated testing.
+   **One-time migration:** `OPENAI_API_KEY`, `CHAT_FAKE_PROVIDER` and `CHAT_FAKE_PROVIDER_DELAY_MS` are removed and have no effect. In your existing `.env.local`, replace them with `AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY` (the old key's value) or `AI_PROVIDER=fake`, and `AI_FAKE_DELAY_MS`.
+
+5. Start the app with `npm run dev` and open <http://localhost:3000>.
+
+The repeatable seed creates User A/Northstar Studio and User B/Harbor Analytics with separate workspace instructions. Never use production credentials in local or automated testing.
 
 Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
 
@@ -37,7 +43,7 @@ npm run build
 
 Unit and route tests use controlled streams and fake adapters, so they require no AI key or database. Vitest loads the local Next.js environment files. Integration tests and Playwright need `APP_ENV=test`: Vitest and the Playwright config set it, and the shared guard then refuses any database other than `workspace_ai_test`. The authorization integration tests run when `TEST_DATABASE_URL` is set; it must point to a migrated database named exactly `workspace_ai_test`. They run the seed against that database, verify workspace membership and credential account IDs, and sign in both demo users through Better Auth. These tests write only to the dedicated test database, so never point `TEST_DATABASE_URL` at a development or production database you care about. The Playwright journey needs the same dedicated `workspace_ai_test` PostgreSQL database with the schema and demo seed applied (global setup refuses any other database, because teardown deletes rows), plus a Chromium browser installed (`npx playwright install chromium`). It logs in as User A, opens Northstar Studio, sends a message, and observes the streamed fake response; another journey reloads and still sees that Conversation. Global teardown deletes the Demo users' Conversations created during the run, so the run leaves no rows behind. Repeated runs within one minute can reach the per-minute Usage limit for User A; wait a minute between runs. Configure the Playwright environment with `DATABASE_URL`, `BETTER_AUTH_SECRET`, both demo emails, and both demo passwords before starting `npm run test:e2e`. Use a dedicated test database; never point it at a development or production database you care about.
 
-CI runs these checks on pull requests and pushes to `main`. Its PostgreSQL 16 service uses a fresh `workspace_ai_test` database. Demo passwords and the Better Auth secret in CI are synthetic job-local values. `CHAT_FAKE_PROVIDER=true` selects the deterministic fake stream only when `APP_ENV` is `development` or `test` (with `production` or no `APP_ENV`, the real provider is used); `CHAT_FAKE_PROVIDER_DELAY_MS` controls its pause before each response chunk (default `120` ms). CI supplies no AI key or production credentials.
+CI runs these checks on pull requests and pushes to `main`. Its PostgreSQL 16 service uses a fresh `workspace_ai_test` database. Demo passwords and the Better Auth secret in CI are synthetic job-local values. CI and Playwright run with `AI_PROVIDER=fake`, which is allowed only when `APP_ENV` is `development` or `test` (in `production` or with no `APP_ENV` it is a configuration error); `AI_FAKE_DELAY_MS` controls its pause before each response chunk (default `120` ms). CI supplies no AI key or production credentials.
 
 ## Usage limits
 
