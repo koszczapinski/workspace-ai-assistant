@@ -1,6 +1,6 @@
 # Workspace AI Assistant
 
-A private portfolio MVP demonstrating authenticated, workspace-isolated AI chat with streamed output. Each Conversation is stored in PostgreSQL, private to the User who had it in that Workspace, so a reload keeps it.
+A self-hosted starter for a multi-tenant AI chat application: authenticated, workspace-isolated chat with streamed output. You fork it, set environment variables and run one instance (see `docs/adr/0005-self-hosted-starter.md` and `docs/product.md`). Each Conversation is stored in PostgreSQL, private to the User who had it in that Workspace, so a reload keeps it.
 
 ## Local setup
 
@@ -111,9 +111,9 @@ Both variables are optional and are listed in `.env.example`. A value that is no
 - Counters live in PostgreSQL (table `usage_counters`, no message content), so they are shared by all server instances. Counters of expired windows are purged during normal checks.
 - If the counter store is unreachable, the endpoint responds `503` rather than calling the provider (fail closed).
 
-### Public-demo precondition
+### Before any public exposure
 
-The demo may be exposed on a public URL only with these Usage limits configured (the defaults satisfy this; do not disable them or set them very high) and the database reachable. Without them, keep the demo local or private.
+There is no public demo (ADR-0005). The Usage limits are basic, so review them before exposing an instance on a public URL: keep them enabled (the defaults are a sensible start; do not disable them or set them very high) and keep the database reachable. Otherwise keep the instance local or private.
 
 ### What this is and is not
 
@@ -130,7 +130,7 @@ An Owner can, for their own Workspace only:
 - make a Member an Owner, make an Owner a Member, remove a Member, or leave the Workspace;
 - change the Workspace settings (name and Assistant instructions) on the settings screen at `/w/<id>/settings`. The next chat request in that Workspace uses the new Assistant instructions; a response already streaming finishes with the ones it started with. Non-Owners get no entry point and the not-found page there.
 
-The public demo lets visitors change the Demo Workspaces' settings, because Demo users are Owners of their Workspaces. Re-running `npm run db:seed` restores the seeded names and Assistant instructions.
+The Demo users are Owners of their Workspaces, so anyone who signs in as a Demo user can change those settings. Re-running `npm run db:seed` restores the seeded names and Assistant instructions.
 
 A Workspace always keeps at least one Owner: removing, demoting or leaving as the last Owner is blocked, with an explanation on screen. Removal takes effect on the removed User's next request; a response already streaming may finish.
 
@@ -178,6 +178,8 @@ flowchart LR
 
 ## Two-minute demo
 
+A local walkthrough with the seeded Demo users.
+
 1. Sign in as User A with the locally configured demo credentials.
 2. Open Northstar Studio, send “Plan a short demo,” and watch the response arrive as a stream. Reload the page: the Conversation stays, in the Conversations list and on screen with both messages.
 3. Start another response and select Stop; verify partial output remains and is marked stopped.
@@ -194,10 +196,6 @@ The committed [chat screenshot](output/playwright/critical-journey.png) shows th
 
 ## Implemented features and limitations
 
-Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, Member and Owner roles, an Owner-only members screen with Invitations by link (create, revoke, accept with account creation), a last-Owner guard, membership-filtered workspace list, server-side page and chat authorization, workspace-specific instructions, streamed chat, stop/retry controls, stored private Conversations that a reload keeps (list, New conversation, delete), fake-provider tests, and Playwright journeys for login-and-stream, reloading a stored Conversation, and creating and accepting an Invitation.
+Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, Member and Owner roles, an Owner-only members screen with Invitations by link (create, revoke, accept with account creation), a last-Owner guard, membership-filtered workspace list, server-side page and chat authorization, Owner-editable Workspace name and Assistant instructions, Appearance presets, streamed chat with a safe Markdown subset rendered in assistant replies (ADR-0006), stop/retry controls, stored private Conversations that a reload keeps (list, New conversation, rename, delete), a configurable AI provider per deployment (`AI_*` variables), fake-provider tests, and Playwright journeys for login-and-stream, reloading a stored Conversation, and creating and accepting an Invitation.
 
-Limitations: a reload keeps the Conversation, but Conversations are private to their User (no sharing within a Workspace), and there is no search, rename or automatic expiry of Conversations; no public signup, email delivery of Invitations, inviting existing Users, Workspace creation, password reset, more than two roles, file uploads, RAG, tools/function calling, billing, model selection, or production-grade abuse protection (only the basic Usage limits above exist). The demo may go public only with the Usage limits configured. The manual smoke test with a real provider is assigned to the owner and is not part of CI.
-
-Agent-assisted implementation followed the `implement-spec` and `tdd` skills. The Playwright skill was consulted for browser-artifact conventions; the required automated test is implemented with the repository's installed `@playwright/test` convention. No claim is made that other skills or agents were used.
-
-A human must review and approve before merge.
+Limitations: a reload keeps the Conversation, but Conversations are private to their User (no sharing within a Workspace), and there is no search or automatic expiry of Conversations; no public signup, email delivery of Invitations, inviting existing Users, Workspace creation, password reset, more than two roles, file uploads, RAG, tools/function calling, billing, per-Workspace AI configuration, model selection by Owners or Members (the Deployer sets one provider and model through `AI_*`), or production-grade abuse protection (only the basic Usage limits above exist). Review the Usage limits before any public exposure. The manual smoke test with a real provider is not part of CI.
