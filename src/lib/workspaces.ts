@@ -53,6 +53,16 @@ export function createWorkspaceQueries(database: typeof db) {
       if (!saved) throw new Error('Workspace not found');
       return saved;
     },
+    /** The stored Appearance of one Workspace (raw preset text; resolve it with `resolveAppearance`), or null if it does not exist. */
+    async getAppearance(workspaceId: string) {
+      if (!database) return null;
+      const [row] = await database.select({
+        background: workspaces.backgroundPreset,
+        font: workspaces.fontPreset,
+        accent: workspaces.accentPreset,
+      }).from(workspaces).where(eq(workspaces.id, workspaceId)).limit(1);
+      return row ?? null;
+    },
     /** Every Member of one Workspace with their role; Owners first. */
     async listMembers(workspaceId: string) {
       if (!database) return [];
@@ -119,6 +129,7 @@ export const authorizedWorkspace = workspaceQueries.authorizedWorkspace;
 export const ownedWorkspace = workspaceQueries.ownedWorkspace;
 export const workspaceSettings = workspaceQueries.workspaceSettings;
 export const updateWorkspaceSettings = workspaceQueries.updateWorkspaceSettings;
+export const getAppearance = workspaceQueries.getAppearance;
 export const listMembers = workspaceQueries.listMembers;
 export const changeRole = workspaceQueries.changeRole;
 export const removeMember = workspaceQueries.removeMember;

@@ -117,6 +117,20 @@
   --sidebar-ring: oklch(0.556 0 0);
 }
 
+/* Workspace Appearance (src/lib/appearance.ts): the layout sets the --ws-* variables inline; these map them onto the theme tokens, per color mode. */
+.workspace-appearance {
+  font-family: var(--app-font-sans);
+  --primary: var(--ws-primary-light);
+  --primary-foreground: var(--ws-primary-foreground-light);
+  --ring: var(--ws-ring-light);
+}
+
+.dark .workspace-appearance {
+  --primary: var(--ws-primary-dark);
+  --primary-foreground: var(--ws-primary-foreground-dark);
+  --ring: var(--ws-ring-dark);
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
@@ -181,7 +195,7 @@
 
 .workspace-card:hover {
   background: color-mix(in oklch, var(--card), transparent 20%);
-  border-color: color-mix(in oklch, var(--border), #38bdf8 15%);
+  border-color: color-mix(in oklch, var(--border), var(--ws-accent, #38bdf8) 15%);
   box-shadow: 0 18px 48px color-mix(in oklch, var(--foreground), transparent 91%);
 }
 

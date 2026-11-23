@@ -25,11 +25,13 @@ async function main(): Promise<void> {
       key: 'a', email: emailA, password: passwordA, name: 'Demo User A',
       workspaceId: 'workspace-a', workspaceName: 'Northstar Studio',
       instructions: 'You are the Northstar Studio assistant. Help with synthetic product planning.',
+      appearance: { background: 'terra', font: 'system', accent: 'sky' },
     },
     {
       key: 'b', email: emailB, password: passwordB, name: 'Demo User B',
       workspaceId: 'workspace-b', workspaceName: 'Harbor Analytics',
       instructions: 'You are the Harbor Analytics assistant. Help with synthetic data analysis.',
+      appearance: { background: 'nebula', font: 'lora', accent: 'violet' },
     },
   ] as const;
 
@@ -50,10 +52,11 @@ async function main(): Promise<void> {
         if (!user) throw new Error(`Unable to find seeded user ${demo.email}`);
 
         await transaction`
-          INSERT INTO workspaces (id, name, assistant_instructions)
-          VALUES (${demo.workspaceId}, ${demo.workspaceName}, ${demo.instructions})
+          INSERT INTO workspaces (id, name, assistant_instructions, background_preset, font_preset, accent_preset)
+          VALUES (${demo.workspaceId}, ${demo.workspaceName}, ${demo.instructions}, ${demo.appearance.background}, ${demo.appearance.font}, ${demo.appearance.accent})
           ON CONFLICT (id) DO UPDATE
-          SET name = excluded.name, assistant_instructions = excluded.assistant_instructions
+          SET name = excluded.name, assistant_instructions = excluded.assistant_instructions,
+              background_preset = excluded.background_preset, font_preset = excluded.font_preset, accent_preset = excluded.accent_preset
         `;
         await transaction`
           INSERT INTO memberships (id, user_id, workspace_id, role)

@@ -700,3 +700,22 @@ it.skipIf(!testDatabaseUrl)('deleting a Workspace removes its Conversations and 
     await connection!`DELETE FROM workspaces WHERE id = ${workspaceId}`;
   }
 });
+
+it.skipIf(!testDatabaseUrl)('reads each seeded Workspace\'s Appearance, and nothing for a missing one', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+
+  await expect(queries.getAppearance('workspace-a')).resolves.toEqual({ background: 'terra', font: 'system', accent: 'sky' });
+  await expect(queries.getAppearance('workspace-b')).resolves.toEqual({ background: 'nebula', font: 'lora', accent: 'violet' });
+  await expect(queries.getAppearance('no-such-workspace')).resolves.toBeNull();
+});
+
+it.skipIf(!testDatabaseUrl)('gives a new Workspace the default Appearance', async () => {
+  const id = `appearance-defaults-${randomUUID()}`;
+  try {
+    await connection!`INSERT INTO workspaces (id, name, assistant_instructions) VALUES (${id}, 'Defaults', 'x')`;
+    const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+    await expect(queries.getAppearance(id)).resolves.toEqual({ background: 'terra', font: 'system', accent: 'sky' });
+  } finally {
+    await connection!`DELETE FROM workspaces WHERE id = ${id}`;
+  }
+});
