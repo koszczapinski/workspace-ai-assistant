@@ -13,6 +13,9 @@ import { isNonProductionAppEnv } from './environment-guard';
 
 const MAX_FAKE_DELAY_MS = 5_000;
 
+/** The only text about a provider failure that reaches the browser. Provider error details stay on the server. */
+export const PROVIDER_FAILURE_MESSAGE = 'The assistant is unavailable right now. Try again.';
+
 // Empty variables count as unset, so `AI_API_KEY=` in a .env file behaves like no line at all.
 const required = (name: string) => z.string({ error: `${name} is required` }).min(1, `${name} is required`);
 
@@ -123,6 +126,8 @@ export async function streamAssistant(input: AssistantInput): Promise<AssistantS
     system: input.instructions,
     messages: await convertToModelMessages(input.messages),
     abortSignal: input.signal,
+    // Replaces the SDK's default logging, which prints the provider's error. Content-free on purpose.
+    onError: () => console.error('The AI provider failed'),
   });
-  return result.toUIMessageStream();
+  return result.toUIMessageStream({ onError: () => PROVIDER_FAILURE_MESSAGE });
 }
