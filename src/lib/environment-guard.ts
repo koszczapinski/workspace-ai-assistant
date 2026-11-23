@@ -2,7 +2,7 @@
  * Decides whether a destructive database operation (seed, migrate, test cleanup) may run.
  * See docs/adr/0002-explicit-app-env.md: APP_ENV must be explicit, production and a missing value
  * are always refused, test requires the workspace_ai_test database and development a localhost host.
- * The one exception is assertMigrationAllowed, used only by migrate, which accepts a confirmed production database.
+ * The one exception is assertMigrationAllowed (reached through assertPostgresMigrationAllowed, which only scripts/migrate.ts calls), which accepts a confirmed production database.
  */
 import type postgres from 'postgres';
 
