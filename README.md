@@ -19,6 +19,7 @@ Requirements: Node.js 20+, PostgreSQL listening on localhost port 5433 (the port
 
 4. Configure the AI provider in `.env.local` (see `.env.example`). There are no defaults, and a missing or invalid value is an error that names the variable:
    - `AI_PROVIDER=openai` needs `AI_MODEL` (for example `gpt-4o-mini`) and `AI_API_KEY`.
+   - `AI_PROVIDER=openai-compatible` needs `AI_BASE_URL` (for example `http://localhost:1234/v1`) and `AI_MODEL`; `AI_API_KEY` is optional and, when unset, no `Authorization` header is sent. It works with LM Studio, Ollama, OpenRouter, Groq and similar servers. See [Local model with LM Studio](#local-model-with-lm-studio).
    - `AI_PROVIDER=fake` is a deterministic demo stream, allowed only when `APP_ENV` is `development` or `test`. `AI_FAKE_DELAY_MS` (default `120`) sets its pause before each chunk.
 
    **One-time migration:** `OPENAI_API_KEY`, `CHAT_FAKE_PROVIDER` and `CHAT_FAKE_PROVIDER_DELAY_MS` are removed and have no effect. In your existing `.env.local`, replace them with `AI_PROVIDER`, `AI_MODEL`, `AI_API_KEY` (the old key's value) or `AI_PROVIDER=fake`, and `AI_FAKE_DELAY_MS`.
@@ -28,6 +29,31 @@ Requirements: Node.js 20+, PostgreSQL listening on localhost port 5433 (the port
 The repeatable seed creates User A/Northstar Studio and User B/Harbor Analytics with separate workspace instructions. Never use production credentials in local or automated testing.
 
 Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
+
+## Local model with LM Studio
+
+Run the assistant against a model on your own machine. No API key or paid call is involved.
+
+1. Install [LM Studio](https://lmstudio.ai) and its CLI, then download a model: `lms get google/gemma-3-12b` (pick a size that fits your RAM).
+2. Start the server and load the model: `lms server start`, then `lms load google/gemma-3-12b`. The server listens on `http://localhost:1234/v1`. Check the exact id with `lms ls`.
+3. Set the variables in `.env.local`:
+
+   ```
+   AI_PROVIDER=openai-compatible
+   AI_BASE_URL=http://localhost:1234/v1
+   AI_MODEL=google/gemma-3-12b
+   ```
+
+   Leave `AI_API_KEY` unset. Restart `npm run dev`.
+
+### Manual smoke test
+
+Not part of CI. With the dev server running and the model loaded:
+
+- [ ] **Streaming:** send a message; the reply appears incrementally.
+- [ ] **Stop:** press Stop mid-reply; text stops and the server ends generation (LM Studio's log shows it).
+- [ ] **Retry:** run `lms server stop`, send a message and see the provider error; run `lms server start`, press Retry. The reply arrives with no duplicate user message.
+- [ ] **Cancel on Workspace change:** start a reply, switch Workspace; generation is cancelled and messages, partial output and errors are cleared.
 
 ## Quality checks
 

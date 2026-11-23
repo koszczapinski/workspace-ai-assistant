@@ -141,3 +141,110 @@ describe('openai provider', () => {
     expect(body.input[0].role).toMatch(/system|developer/);
   });
 });
+
+describe('openai-compatible provider', () => {
+  const chatChunk = (delta: object, finish: string | null = null) =>
+    `data: ${JSON.stringify({ id: 'c1', object: 'chat.completion.chunk', created: 1, model: 'local-model', choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`;
+  const reply = [
+    chatChunk({ role: 'assistant', content: '' }),
+    chatChunk({ content: 'Hi ' }),
+    chatChunk({ content: 'there' }),
+    chatChunk({}, 'stop'),
+    'data: [DONE]\n\n',
+  ].join('');
+  const sseResponse = () => new Response(reply, { headers: { 'content-type': 'text/event-stream' } });
+
+  function configure(extra: Record<string, string> = {}) {
+    vi.stubEnv('AI_PROVIDER', 'openai-compatible');
+    vi.stubEnv('AI_BASE_URL', 'http://localhost:1234/v1');
+    vi.stubEnv('AI_MODEL', 'local-model');
+    for (const [key, value] of Object.entries(extra)) vi.stubEnv(key, value);
+  }
+  const callOf = (fetchStub: ReturnType<typeof vi.fn>) => fetchStub.mock.calls[0] as unknown as [string, RequestInit];
+
+  it('streams a Chat Completions reply from AI_BASE_URL with the model and system instructions', async () => {
+    configure();
+    const fetchStub = vi.fn(async () => sseResponse());
+    vi.stubGlobal('fetch', fetchStub);
+
+    const chunks = await readAll(await streamAssistant({ instructions: 'Be brief.', messages: [hello] }));
+
+    expect(chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.delta)).toEqual(['Hi ', 'there']);
+    expect(chunks.at(-1)).toMatchObject({ type: 'finish' });
+    const [url, init] = callOf(fetchStub);
+    expect(url).toBe('http://localhost:1234/v1/chat/completions');
+    const body = JSON.parse(init.body as string);
+    expect(body.model).toBe('local-model');
+    expect(body.messages[0]).toEqual({ role: 'system', content: 'Be brief.' });
+  });
+
+  it('sends no Authorization header without AI_API_KEY', async () => {
+    configure();
+    const fetchStub = vi.fn(async () => sseResponse());
+    vi.stubGlobal('fetch', fetchStub);
+
+    await readAll(await streamAssistant({ instructions: 'Demo', messages: [hello] }));
+
+    expect(new Headers(callOf(fetchStub)[1].headers).has('authorization')).toBe(false);
+  });
+
+  it('sends a bearer header when AI_API_KEY is set', async () => {
+    configure({ AI_API_KEY: 'test-key' });
+    const fetchStub = vi.fn(async () => sseResponse());
+    vi.stubGlobal('fetch', fetchStub);
+
+    await readAll(await streamAssistant({ instructions: 'Demo', messages: [hello] }));
+
+    expect(new Headers(callOf(fetchStub)[1].headers).get('authorization')).toBe('Bearer test-key');
+  });
+
+  it('ends a started stream with abort when the signal aborts, and passes the signal to fetch', async () => {
+    configure();
+    const controller = new AbortController();
+    const encoder = new TextEncoder();
+    const fetchStub = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(streamController) {
+          streamController.enqueue(encoder.encode(chatChunk({ role: 'assistant', content: '' }) + chatChunk({ content: 'Hi ' })));
+          // The server keeps the response open until the request is aborted.
+          init.signal?.addEventListener('abort', () => streamController.error(init.signal?.reason ?? new DOMException('Aborted', 'AbortError')));
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    });
+    vi.stubGlobal('fetch', fetchStub);
+
+    const reader = (await streamAssistant({ instructions: 'Demo', messages: [hello], signal: controller.signal })).getReader();
+    const chunks: UIMessageChunk[] = [];
+    while (textOf(chunks) === '') chunks.push((await reader.read()).value!);
+    controller.abort();
+    for (let next = await reader.read(); !next.done; next = await reader.read()) chunks.push(next.value);
+
+    expect(textOf(chunks)).toBe('Hi ');
+    expect(chunks.at(-1)).toMatchObject({ type: 'abort' });
+    const fetchSignal = callOf(fetchStub)[1].signal;
+    expect(fetchSignal).toBeInstanceOf(AbortSignal);
+    expect(fetchSignal?.aborted).toBe(true);
+  });
+
+  it('ends the stream with an error when the server is unreachable', async () => {
+    configure();
+    vi.stubGlobal('fetch', vi.fn(async () => { throw new TypeError('fetch failed'); }));
+
+    const chunks = await readAll(await streamAssistant({ instructions: 'Demo', messages: [hello] }));
+
+    expect(chunks.at(-1)).toMatchObject({ type: 'error' });
+  });
+
+  it.each([
+    ['AI_BASE_URL', { AI_PROVIDER: 'openai-compatible', AI_MODEL: 'secret-model' }],
+    ['AI_MODEL', { AI_PROVIDER: 'openai-compatible', AI_BASE_URL: 'http://secret-host:1234/v1' }],
+  ])('rejects when %s is missing, naming it without any value', async (name, env) => {
+    for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
+
+    const error = await streamAssistant({ instructions: 'Demo', messages: [hello] }).then(() => null, (e: Error) => e);
+
+    expect(error?.message).toContain(name);
+    expect(error?.message).not.toMatch(/secret/);
+  });
+});
