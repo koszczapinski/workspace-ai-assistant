@@ -1,7 +1,10 @@
 /**
  * Decides whether a destructive database operation (seed, migrate, test cleanup) may run.
- * See docs/adr/0002-explicit-app-env.md: APP_ENV must be explicit, production and a missing value
- * are always refused, test requires the workspace_ai_test database and development a localhost host.
+ * See docs/adr/0002-explicit-app-env.md: APP_ENV must be explicit, test requires the workspace_ai_test
+ * database and development a localhost host. Production and a missing value are refused, except for
+ * one operation: assertMigrationAllowed (reached through assertPostgresMigrationAllowed, which only
+ * scripts/migrate.ts calls) accepts a production database when the Deployer confirms its name.
+ * The confirmation guards against a typo; it is not authorization.
  */
 import type postgres from 'postgres';
 
@@ -64,6 +67,72 @@ export async function assertDatabaseOperationAllowed(input: DatabaseOperationGua
   }
 }
 
+export type MigrationGuardInput = {
+  appEnv: string | undefined;
+  databaseUrl: string;
+  /** The value of `--confirm-database`, if given. Only ever consulted when APP_ENV is production. */
+  confirmDatabase: string | undefined;
+  currentDatabase: () => Promise<string>;
+};
+
+/**
+ * The one deliberate production exception (ADR-0002): a Deployer may migrate a non-local database.
+ * Only migrate calls this. With APP_ENV=production it requires the confirmed name to equal both the
+ * database in the URL and the one the live connection reports. Every other APP_ENV, including a
+ * missing one, goes through the regular guard (development and test only) and ignores the confirmation.
+ */
+export async function assertMigrationAllowed(input: MigrationGuardInput): Promise<void> {
+  if (input.appEnv !== 'production') {
+    return assertDatabaseOperationAllowed({
+      appEnv: input.appEnv,
+      databaseUrl: input.databaseUrl,
+      allow: ['development', 'test'],
+      currentDatabase: input.currentDatabase,
+    });
+  }
+
+  const target = describeTarget(input.appEnv, input.databaseUrl);
+  const refuse = (reason: string) => new Error(`Refusing to migrate the database: ${reason} (${target.summary})`);
+
+  if (!input.confirmDatabase) {
+    throw refuse(`production migrations need confirmation, pass --confirm-database ${target.database}`);
+  }
+  if (input.confirmDatabase !== target.database) {
+    throw refuse(`--confirm-database ${input.confirmDatabase} does not match the database in DATABASE_URL`);
+  }
+  const connected = await input.currentDatabase();
+  if (connected !== input.confirmDatabase) {
+    throw refuse(`--confirm-database ${input.confirmDatabase} does not match the database the connection reports, ${connected}`);
+  }
+}
+
+/** Reads the `--confirm-database <name>` or `--confirm-database=<name>` argument; undefined when absent. */
+export function parseConfirmDatabase(argv: readonly string[]): string | undefined {
+  const flag = '--confirm-database';
+  const fail = () => new Error(`${flag} needs a database name, for example ${flag} workspace_ai`);
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i];
+    if (arg.startsWith(`${flag}=`)) {
+      const value = arg.slice(flag.length + 1);
+      if (!value) throw fail();
+      return value;
+    }
+    if (arg === flag) {
+      const value = argv[i + 1];
+      if (!value || value.startsWith('--')) throw fail();
+      return value;
+    }
+  }
+  return undefined;
+}
+
+function currentDatabaseOf(sql: postgres.Sql) {
+  return async () => {
+    const [{ name }] = await sql<{ name: string }[]>`SELECT current_database() AS name`;
+    return name;
+  };
+}
+
 /** Runs the guard for an open postgres.js connection, reading APP_ENV from the process environment. */
 export function assertPostgresOperationAllowed(
   sql: postgres.Sql,
@@ -74,9 +143,20 @@ export function assertPostgresOperationAllowed(
     appEnv: process.env.APP_ENV,
     databaseUrl,
     allow,
-    currentDatabase: async () => {
-      const [{ name }] = await sql<{ name: string }[]>`SELECT current_database() AS name`;
-      return name;
-    },
+    currentDatabase: currentDatabaseOf(sql),
+  });
+}
+
+/** The migrate-only guard for an open postgres.js connection; see assertMigrationAllowed. */
+export function assertPostgresMigrationAllowed(
+  sql: postgres.Sql,
+  databaseUrl: string,
+  confirmDatabase: string | undefined,
+): Promise<void> {
+  return assertMigrationAllowed({
+    appEnv: process.env.APP_ENV,
+    databaseUrl,
+    confirmDatabase,
+    currentDatabase: currentDatabaseOf(sql),
   });
 }

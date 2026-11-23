@@ -16,6 +16,7 @@ test-results/
 .env
 .env.*
 !.env.example
+!.env.compose.example
 
 # logs and OS
 npm-debug.log*

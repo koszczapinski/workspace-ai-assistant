@@ -20,3 +20,7 @@ Scripts that write or delete data (seed, migrate, test cleanup) and the fake AI 
 - Production migration, backups and Demo users for a public demo are decided with the first deployment. Until then, migrate and seed refuse `production`.
 
 Accepted on 2026-11-22. Spec and tickets: `.scratch/environment-safety/`.
+
+## Note, 2026-11-23: confirmed production migration
+
+A self-hosted Deployer must be able to migrate a database that is not local (see ADR-0005). This is a deliberate exception, limited to migrate. With `APP_ENV=production`, `db:migrate` runs only when given `--confirm-database <name>` and `<name>` equals both the database in `DATABASE_URL` and the name the live connection reports through `current_database()`. Otherwise it refuses and changes nothing. A missing or unknown `APP_ENV` is still refused, with or without the flag, and the flag does not relax the development or test rules. The seed, test cleanup and every other guarded operation still refuse `production`: the exception is a separate function (`assertMigrationAllowed`, reached through `assertPostgresMigrationAllowed`, which only `scripts/migrate.ts` calls), not an option of the shared guard. Nothing but convention stops another script from importing it, so reviews must reject such imports. This supersedes the last Consequences line for migrate only; backups and Demo users for a public demo remain open.

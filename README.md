@@ -7,7 +7,7 @@ A self-hosted starter for a multi-tenant AI chat application: authenticated, wor
 Requirements: Node.js 20+, PostgreSQL listening on localhost port 5433 (the port in `.env.example`), and a local database named `workspace_ai`.
 
 1. Copy `.env.example` to `.env`. If you already have a `.env`, add `APP_ENV=development` to it and point `DATABASE_URL` at port 5433.
-2. Keep `APP_ENV=development` (one of `development`, `test` or `production`; see `docs/adr/0002-explicit-app-env.md`). `db:migrate` and `db:seed` refuse to run unless it is `development` or `test`, and with `development` they require a localhost `DATABASE_URL`. Set `DATABASE_URL`, a random `BETTER_AUTH_SECRET` with at least 32 characters, and distinct synthetic passwords for `DEMO_USER_A_PASSWORD` and `DEMO_USER_B_PASSWORD`. The example supplies demo email addresses.
+2. Keep `APP_ENV=development` (one of `development`, `test` or `production`; see `docs/adr/0002-explicit-app-env.md`). `db:seed` refuses to run unless it is `development` or `test`, and `db:migrate` does the same except for the Deployer exception below; with `development` both require a localhost `DATABASE_URL`. Set `DATABASE_URL`, a random `BETTER_AUTH_SECRET` with at least 32 characters, and distinct synthetic passwords for `DEMO_USER_A_PASSWORD` and `DEMO_USER_B_PASSWORD`. The example supplies demo email addresses.
 3. Install dependencies and prepare the database:
 
    ```sh
@@ -27,6 +27,14 @@ Requirements: Node.js 20+, PostgreSQL listening on localhost port 5433 (the port
 5. Start the app with `npm run dev` and open <http://localhost:3000>.
 
 The repeatable seed creates User A/Northstar Studio and User B/Harbor Analytics with separate workspace instructions. Never use production credentials in local or automated testing.
+
+**Deployer: migrating a non-local database.** With `APP_ENV=production`, `db:migrate` runs only when you confirm the database by name:
+
+```bash
+APP_ENV=production DATABASE_URL=... npm run db:migrate -- --confirm-database <name>
+```
+
+`<name>` must equal the database in `DATABASE_URL` and the name the live connection reports (`current_database()`). Otherwise the command refuses and changes nothing. A missing or unknown `APP_ENV` is refused with or without the flag, and the flag does not relax the development or test rules. `db:seed` never runs in production. See the note in `docs/adr/0002-explicit-app-env.md`.
 
 Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
 
@@ -76,6 +84,24 @@ Not part of CI. With the dev server running and the model loaded:
 - [ ] **Stop:** press Stop mid-reply; text stops and the server ends generation (LM Studio's log shows it).
 - [ ] **Retry:** run `lms server stop`, send a message and see the provider error; run `lms server start`, press Retry. The reply arrives with no duplicate user message.
 - [ ] **Cancel on Workspace change:** start a reply, switch Workspace; generation is cancelled and messages, partial output and errors are cleared.
+
+<!-- docker-compose:start -->
+## Run with Docker Compose
+
+Docker Compose (the app and PostgreSQL) is the one supported way for a Deployer to run an instance. The full Deployer walkthrough is separate; this is the short path.
+
+1. Copy `.env.compose.example` to `.env` and fill it in. `.env` is git-ignored and never copied into the image.
+   - `POSTGRES_PASSWORD`: URL-safe characters only, for example `openssl rand -hex 24`. `POSTGRES_USER` and `POSTGRES_DB` default to `workspace_ai`.
+   - `BETTER_AUTH_SECRET`: at least 32 random characters. `BETTER_AUTH_URL`: required, the URL people open (it must match `APP_PORT` or your domain, or sign-in and Invitation links break); `APP_PORT` changes the host port.
+   - `AI_PROVIDER` and `AI_MODEL`, plus `AI_API_KEY` (`openai`) or `AI_BASE_URL` (`openai-compatible`). The containers run with `APP_ENV=production`, so `AI_PROVIDER=fake` is refused. From inside a container, `localhost` is the container: reach LM Studio on the host at `http://host.docker.internal:1234/v1`.
+   - Compose stops with a message naming any of `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `AI_PROVIDER` or `AI_MODEL` that is missing.
+2. Start it: `docker compose up --build`. Open `http://localhost:3000/login` (or your `APP_PORT`).
+3. Stop with `docker compose down`. The database lives in the named volume `db-data`, so data survives `down` and `up`; `docker compose down -v` deletes it.
+
+What happens on `up`: PostgreSQL starts and passes its healthcheck, then the one-shot `migrate` service applies `db/migrations`, then the app starts. Because the database host is the container `db`, it is not local, so `migrate` runs the confirmed production path of `docs/adr/0002-explicit-app-env.md`: `APP_ENV=production npm run db:migrate -- --confirm-database "$POSTGRES_DB"`. The name confirmed is the database Compose created, which is also the one in `DATABASE_URL` and the one the connection reports. If the migration fails, the app does not start. The seed is never run and no Demo users exist, so a fresh instance has no accounts yet (the `bootstrap` command of ticket #40 creates the first Workspace and Owner Invitation; it is not part of this change, and the walkthrough is ticket #42). Compose runs with basic Usage limits only; review them before any public exposure.
+
+The image (`Dockerfile`) has a `migrate` target (all dependencies, `scripts/`, `src/`, `db/`) and a default `runtime` target (the Next.js standalone server only). It holds no secrets: configuration arrives from `.env` when the containers start.
+<!-- docker-compose:end -->
 
 ## Quality checks
 
