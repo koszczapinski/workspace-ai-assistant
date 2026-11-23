@@ -36,7 +36,7 @@ describe('Docker deploy files', () => {
     for (const name of ['POSTGRES_PASSWORD', 'BETTER_AUTH_SECRET', 'AI_PROVIDER', 'AI_MODEL']) {
       expect(compose).toContain(`\${${name}:?`);
     }
-    expect(compose.match(/APP_ENV: production/g)).toHaveLength(2);
+    expect(compose.match(/APP_ENV: production/g)).toHaveLength(3);
     expect(compose).not.toMatch(/AI_PROVIDER: fake|APP_ENV: (development|test)/);
   });
 
@@ -45,6 +45,15 @@ describe('Docker deploy files', () => {
     expect(compose).toContain('condition: service_completed_successfully');
     expect(compose).toContain('condition: service_healthy');
     expect(compose).not.toMatch(/db:seed|seed\.ts/);
+  });
+
+  it('offers bootstrap as an opt-in service on the confirmed production path, with the public URL', () => {
+    const service = compose.slice(compose.indexOf('\n  bootstrap:'), compose.indexOf('\n  app:'));
+    expect(service).toContain('profiles: ["tools"]');
+    expect(service).toContain('target: migrate');
+    expect(service).toContain('BETTER_AUTH_URL: ${BETTER_AUTH_URL:?');
+    expect(service).toContain('npm run --silent bootstrap -- --confirm-database \\"$$POSTGRES_DB\\"');
+    expect(service).toContain('condition: service_completed_successfully');
   });
 
   it('keeps database data in a named volume and publishes only the app port', () => {
