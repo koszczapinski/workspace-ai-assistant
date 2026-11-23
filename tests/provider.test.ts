@@ -1,6 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { streamAssistant } from '@/lib/provider';
 import type { UIMessage, UIMessageChunk } from 'ai';
+
+// Each test starts with no AI configuration, whatever CI or a local .env file sets (empty counts as unset).
+beforeEach(() => {
+  for (const name of ['AI_PROVIDER', 'AI_MODEL', 'AI_API_KEY', 'AI_BASE_URL', 'AI_FAKE_DELAY_MS']) vi.stubEnv(name, '');
+});
 
 afterEach(() => {
   vi.restoreAllMocks();
