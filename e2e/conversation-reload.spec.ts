@@ -15,7 +15,7 @@ test('a Member reloads the Workspace and still has their Conversation', async ({
 
   await page.getByLabel('Message').fill(question);
   await page.getByRole('button', { name: 'Send' }).click();
-  const reply = page.locator('article[aria-label="Assistant response"] p.whitespace-pre-wrap');
+  const reply = page.locator('article[aria-label="Assistant response"] > div');
   await expect(reply).toContainText(`Demo response: ${question}`);
   await expect(page).toHaveURL(/\/w\/workspace-a\/c\/[^/]+$/);
 

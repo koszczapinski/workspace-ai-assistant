@@ -17,9 +17,15 @@ test('a member signs in, opens their workspace, and sees a streamed answer', asy
 
   await page.getByLabel('Message').fill('Plan a short demo');
   await page.getByRole('button', { name: 'Send' }).click();
-  const response = page.locator('article[aria-label="Assistant response"] p.whitespace-pre-wrap');
+  const response = page.locator('article[aria-label="Assistant response"] > div');
   await expect(response).toContainText('Demo response:');
   await expect(response).toContainText('Plan a short demo');
+
+
+  await page.getByLabel('Message').fill('**bold**');
+  await page.getByRole('button', { name: 'Send' }).click();
+  await expect(page.locator('article[aria-label="Assistant response"] strong').last()).toHaveText('bold');
+  await expect(page.locator('article[aria-label="Your message"]').last()).toContainText('**bold**');
 
   await mkdir('output/playwright', { recursive: true });
   await page.screenshot({ path: 'output/playwright/critical-journey.png', fullPage: true });
