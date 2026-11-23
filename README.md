@@ -7,7 +7,7 @@ A private portfolio MVP demonstrating authenticated, workspace-isolated AI chat 
 Requirements: Node.js 20+, PostgreSQL listening on localhost port 5433 (the port in `.env.example`), and a local database named `workspace_ai`.
 
 1. Copy `.env.example` to `.env`. If you already have a `.env`, add `APP_ENV=development` to it and point `DATABASE_URL` at port 5433.
-2. Keep `APP_ENV=development` (one of `development`, `test` or `production`; see `docs/adr/0002-explicit-app-env.md`). `db:migrate` and `db:seed` refuse to run unless it is `development` or `test`, and with `development` they require a localhost `DATABASE_URL`. Set `DATABASE_URL`, a random `BETTER_AUTH_SECRET` with at least 32 characters, and distinct synthetic passwords for `DEMO_USER_A_PASSWORD` and `DEMO_USER_B_PASSWORD`. The example supplies demo email addresses.
+2. Keep `APP_ENV=development` (one of `development`, `test` or `production`; see `docs/adr/0002-explicit-app-env.md`). `db:seed` refuses to run unless it is `development` or `test`, and `db:migrate` does the same except for the Deployer exception below; with `development` both require a localhost `DATABASE_URL`. Set `DATABASE_URL`, a random `BETTER_AUTH_SECRET` with at least 32 characters, and distinct synthetic passwords for `DEMO_USER_A_PASSWORD` and `DEMO_USER_B_PASSWORD`. The example supplies demo email addresses.
 3. Install dependencies and prepare the database:
 
    ```sh
@@ -27,6 +27,14 @@ Requirements: Node.js 20+, PostgreSQL listening on localhost port 5433 (the port
 5. Start the app with `npm run dev` and open <http://localhost:3000>.
 
 The repeatable seed creates User A/Northstar Studio and User B/Harbor Analytics with separate workspace instructions. Never use production credentials in local or automated testing.
+
+**Deployer: migrating a non-local database.** With `APP_ENV=production`, `db:migrate` runs only when you confirm the database by name:
+
+```bash
+APP_ENV=production DATABASE_URL=... npm run db:migrate -- --confirm-database <name>
+```
+
+`<name>` must equal the database in `DATABASE_URL` and the name the live connection reports (`current_database()`). Otherwise the command refuses and changes nothing. A missing or unknown `APP_ENV` is refused with or without the flag, and the flag does not relax the development or test rules. `db:seed` never runs in production. See the note in `docs/adr/0002-explicit-app-env.md`.
 
 Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
 
