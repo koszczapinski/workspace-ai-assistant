@@ -97,7 +97,6 @@ describe('configuration errors', () => {
     ['AI_API_KEY is missing', { AI_PROVIDER: 'openai', AI_MODEL: 'm' }, 'AI_API_KEY'],
   ])('rejects when %s, naming the variable without any value', async (_label, env, name) => {
     for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
-    vi.stubEnv('OPENAI_API_KEY', secret);
 
     const error = await streamAssistant({ instructions: 'Demo', messages: [hello] }).then(() => null, (e: Error) => e);
 
@@ -128,7 +127,8 @@ describe('openai provider', () => {
 
     expect(textOf(chunks)).toBe('Hi there');
     expect(chunks.at(-1)).toMatchObject({ type: 'finish' });
-    const [, init] = fetchStub.mock.calls[0] as unknown as [string, RequestInit];
+    const [url, init] = fetchStub.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://api.openai.com/v1/responses');
     expect(new Headers(init.headers).get('authorization')).toBe('Bearer test-key');
     const body = JSON.parse(init.body as string);
     expect(body.model).toBe('test-model');
