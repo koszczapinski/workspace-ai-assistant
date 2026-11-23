@@ -7,8 +7,9 @@ import { assertPostgresConfirmedOperationAllowed } from '../src/lib/environment-
 loadEnvConfig(process.cwd());
 
 /**
- * Deployer's first-run command: creates the first Workspace and prints a single-use Owner Invitation link, once.
- * Runs only after the environment guard (the same confirmation as migrate) and only on a database with no Workspace.
+ * Deployer's first-run command: creates the first Workspace, or re-issues the Owner Invitation of the one Workspace that
+ * still has no Owner, and prints the single-use Owner Invitation link once. Runs only after the environment guard
+ * (the same confirmation as migrate); refuses once an Owner exists.
  */
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
@@ -23,7 +24,9 @@ async function main(): Promise<void> {
       workspaceName,
       publicBaseUrl: process.env.BETTER_AUTH_URL,
     });
-    console.log(`Created Workspace "${workspaceName}".`);
+    console.log(result.kind === 'created'
+      ? `Created Workspace "${result.workspaceName}".`
+      : `Re-issued the Owner Invitation for Workspace "${result.workspaceName}"; earlier pending bootstrap Invitations were revoked.`);
     console.log(`Owner Invitation link (shown once, single use, valid until ${result.expiresAt.toISOString()}):`);
     console.log(result.link);
   } finally {

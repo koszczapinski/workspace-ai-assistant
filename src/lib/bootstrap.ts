@@ -8,9 +8,11 @@ export const DEFAULT_ASSISTANT_INSTRUCTIONS =
 
 /** What the bootstrap needs inside one database transaction. */
 export type BootstrapTransaction = {
-  /** Locks the Workspace table against concurrent bootstraps, then counts its rows. */
-  countWorkspaces: () => Promise<number>;
+  /** Locks the Workspace table against concurrent bootstraps, then lists its rows (with whether each has an Owner Membership). */
+  lockWorkspaces: () => Promise<{ id: string; name: string; hasOwner: boolean }[]>;
   insertWorkspace: (workspace: { id: string; name: string; assistantInstructions: string }) => Promise<void>;
+  /** Revokes the Workspace's still-pending Invitations that bootstrap created (no creating User, role owner); returns how many. */
+  revokePendingBootstrapInvitations: (workspaceId: string) => Promise<number>;
   createInvitation: InvitationStore['create'];
 };
 
@@ -19,8 +21,8 @@ export type BootstrapStore = {
   transaction: <T>(fn: (tx: BootstrapTransaction) => Promise<T>) => Promise<T>;
 };
 
-/** Reads `--workspace <name>` (or `--workspace=<name>`) and `--confirm-database`; the name is validated like Workspace settings. */
-export function parseBootstrapArgs(argv: readonly string[]): { workspaceName: string; confirmDatabase: string | undefined } {
+/** Reads the optional `--workspace <name>` (or `--workspace=<name>`) and `--confirm-database`; a given name is validated like Workspace settings. */
+export function parseBootstrapArgs(argv: readonly string[]): { workspaceName: string | undefined; confirmDatabase: string | undefined } {
   const flag = '--workspace';
   const missing = () => new Error(`${flag} needs a Workspace name, for example ${flag} "Acme"`);
   let raw: string | undefined;
@@ -33,38 +35,68 @@ export function parseBootstrapArgs(argv: readonly string[]): { workspaceName: st
       raw = value;
     }
   }
-  if (raw === undefined) throw missing();
+  if (raw === undefined) return { workspaceName: undefined, confirmDatabase: parseConfirmDatabase(argv) };
 
   const parsed = workspaceNameSchema.safeParse(raw);
   if (!parsed.success) throw new Error(parsed.error.issues[0]?.message ?? 'Invalid Workspace name.');
   return { workspaceName: parsed.data, confirmDatabase: parseConfirmDatabase(argv) };
 }
 
+export type BootstrapResult = {
+  /** `created`: a new Workspace and its Owner Invitation. `reissued`: a fresh Owner Invitation for the Workspace that still has no Owner. */
+  kind: 'created' | 'reissued';
+  workspaceId: string;
+  workspaceName: string;
+  link: string;
+  expiresAt: Date;
+};
+
 /**
- * Creates the first Workspace and a single-use Owner Invitation, all in one transaction. Refuses, before writing,
- * when any Workspace exists. The link is built from the app's public base URL (BETTER_AUTH_URL) and is returned
- * to the caller only; the database holds just the token hash.
+ * First-run command, all in one transaction under a table lock (concurrent runs queue and see each other's result):
+ * - no Workspace: creates it (`workspaceName` required) and issues its Owner Invitation;
+ * - exactly one Workspace without an Owner: creates nothing, revokes the earlier pending bootstrap Invitations and issues
+ *   a fresh Owner Invitation (`workspaceName`, if given, must equal the existing name);
+ * - otherwise (an Owner exists, or several Workspaces): refuses before writing.
+ * The link is built from the app's public base URL (BETTER_AUTH_URL) and is returned to the caller only; the database
+ * holds just the token hash.
  */
 export async function bootstrapWorkspace({
   store, workspaceName, publicBaseUrl, now = () => new Date(), newId = randomUUID, generateToken,
 }: {
   store: BootstrapStore;
-  workspaceName: string;
+  workspaceName: string | undefined;
   publicBaseUrl: string | undefined;
   now?: () => Date;
   newId?: () => string;
   generateToken?: () => string;
-}): Promise<{ workspaceId: string; link: string; expiresAt: Date }> {
+}): Promise<BootstrapResult> {
   const origin = publicOrigin(publicBaseUrl);
 
   return store.transaction(async tx => {
-    if ((await tx.countWorkspaces()) > 0) {
-      throw new Error('Refusing to bootstrap: a Workspace already exists. Invite further Members from the Invitations screen and promote them to Owner on the Members screen.');
+    const existing = await tx.lockWorkspaces();
+    const issue = async (workspaceId: string) => {
+      const { token, expiresAt } = await issueInvitation({ create: tx.createInvitation }, { workspaceId, createdBy: null, role: 'owner', now: now(), generateToken });
+      return { link: `${origin}/invite/${token}`, expiresAt };
+    };
+
+    if (existing.length === 0) {
+      if (workspaceName === undefined) throw new Error('--workspace needs a Workspace name, for example --workspace "Acme"');
+      const workspaceId = newId();
+      await tx.insertWorkspace({ id: workspaceId, name: workspaceName, assistantInstructions: DEFAULT_ASSISTANT_INSTRUCTIONS });
+      return { kind: 'created', workspaceId, workspaceName, ...(await issue(workspaceId)) };
     }
-    const workspaceId = newId();
-    await tx.insertWorkspace({ id: workspaceId, name: workspaceName, assistantInstructions: DEFAULT_ASSISTANT_INSTRUCTIONS });
-    const { token, expiresAt } = await issueInvitation({ create: tx.createInvitation }, { workspaceId, createdBy: null, role: 'owner', now: now(), generateToken });
-    return { workspaceId, link: `${origin}/invite/${token}`, expiresAt };
+    if (existing.length > 1) {
+      throw new Error('Refusing to bootstrap: more than one Workspace exists. Create further Invitations from the members screen of the Workspace.');
+    }
+    const [workspace] = existing;
+    if (workspace.hasOwner) {
+      throw new Error('Refusing to bootstrap: the Workspace already has an Owner; create further Invitations from the members screen.');
+    }
+    if (workspaceName !== undefined && workspaceName !== workspace.name) {
+      throw new Error(`Refusing to bootstrap: the existing Workspace is named "${workspace.name}", not "${workspaceName}". Omit --workspace or pass the existing name; nothing was renamed.`);
+    }
+    await tx.revokePendingBootstrapInvitations(workspace.id);
+    return { kind: 'reissued', workspaceId: workspace.id, workspaceName: workspace.name, ...(await issue(workspace.id)) };
   });
 }
 
