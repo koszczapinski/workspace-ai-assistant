@@ -1,4 +1,5 @@
 import { createOpenAI } from '@ai-sdk/openai';
+import { createOpenAICompatible } from '@ai-sdk/openai-compatible';
 import { z } from 'zod';
 import {
   convertToModelMessages,
@@ -24,6 +25,12 @@ const aiConfigSchema = z.discriminatedUnion(
       AI_API_KEY: required('AI_API_KEY'),
     }),
     z.object({
+      AI_PROVIDER: z.literal('openai-compatible'),
+      AI_BASE_URL: required('AI_BASE_URL'),
+      AI_MODEL: required('AI_MODEL'),
+      AI_API_KEY: z.string().optional(),
+    }),
+    z.object({
       AI_PROVIDER: z.literal('fake'),
       AI_FAKE_DELAY_MS: z
         .string()
@@ -32,7 +39,7 @@ const aiConfigSchema = z.discriminatedUnion(
         .default(120),
     }),
   ],
-  { error: 'AI_PROVIDER must be one of: openai, fake' },
+  { error: 'AI_PROVIDER must be one of: openai, openai-compatible, fake' },
 );
 
 type AiConfig = z.infer<typeof aiConfigSchema>;
@@ -52,7 +59,15 @@ function readAiConfig(env: NodeJS.ProcessEnv): AiConfig {
 }
 
 /** The one place the chat model is built. */
-function resolveChatModel(config: Extract<AiConfig, { AI_PROVIDER: 'openai' }>) {
+function resolveChatModel(config: Exclude<AiConfig, { AI_PROVIDER: 'fake' }>) {
+  if (config.AI_PROVIDER === 'openai-compatible') {
+    // Chat Completions against any OpenAI-compatible server. No key means no Authorization header.
+    return createOpenAICompatible({
+      name: 'openai-compatible',
+      baseURL: config.AI_BASE_URL,
+      apiKey: config.AI_API_KEY,
+    }).chatModel(config.AI_MODEL);
+  }
   return createOpenAI({ apiKey: config.AI_API_KEY })(config.AI_MODEL);
 }
 
