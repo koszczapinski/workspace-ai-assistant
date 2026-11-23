@@ -66,7 +66,7 @@ describe('bootstrapWorkspace', () => {
   it('refuses when any Workspace exists, before writing anything', async () => {
     const { store, calls } = fakeStore(1);
     await expect(bootstrapWorkspace({ store, workspaceName: 'Acme', publicBaseUrl: 'https://app.example.com', ...deps }))
-      .rejects.toThrow(/already exists.*Invitations screen/);
+      .rejects.toThrow(/already exists.*Invitations screen.*Members screen/);
     expect(calls).toEqual(['count']);
   });
 

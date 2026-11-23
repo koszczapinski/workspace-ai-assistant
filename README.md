@@ -42,7 +42,7 @@ APP_ENV=production DATABASE_URL=... npm run db:migrate -- --confirm-database <na
 npm run bootstrap -- --workspace "Acme" [--confirm-database <name>]
 ```
 
-It prints a single-use Owner Invitation link, valid for 7 days, once; only a hash of its token is stored, so copy it now. The link is built from `BETTER_AUTH_URL`, which must be the public address of the app. Open it, create your account, and you are the Owner of the Workspace. The command uses the same database confirmation as `db:migrate` (`--confirm-database` is required with `APP_ENV=production`), validates the name like Workspace settings (1 to 60 characters), and refuses when any Workspace already exists, so it never creates duplicates. Further Owners come from the Invitations screen.
+It prints a single-use Owner Invitation link, valid for 7 days, once; only a hash of its token is stored, so copy it now. The link is built from `BETTER_AUTH_URL`, which must be the public address of the app. Open it, create your account, and you are the Owner of the Workspace. The command uses the same database confirmation as `db:migrate` (`--confirm-database` is required with `APP_ENV=production`), validates the name like Workspace settings (1 to 60 characters), and refuses when any Workspace already exists, so it never creates duplicates. Further Members come from the Invitations screen; an Owner promotes a Member to Owner on the Members screen.
 
 Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
 

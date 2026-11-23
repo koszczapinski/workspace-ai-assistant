@@ -59,7 +59,7 @@ export async function bootstrapWorkspace({
 
   return store.transaction(async tx => {
     if ((await tx.countWorkspaces()) > 0) {
-      throw new Error('Refusing to bootstrap: a Workspace already exists. Create further Owners from the Invitations screen.');
+      throw new Error('Refusing to bootstrap: a Workspace already exists. Invite further Members from the Invitations screen and promote them to Owner on the Members screen.');
     }
     const workspaceId = newId();
     await tx.insertWorkspace({ id: workspaceId, name: workspaceName, assistantInstructions: DEFAULT_ASSISTANT_INSTRUCTIONS });
