@@ -46,6 +46,19 @@ Run the assistant against a model on your own machine. No API key or paid call i
 
    Leave `AI_API_KEY` unset. Restart `npm run dev`.
 
+### Context length for long Conversations
+
+LM Studio loads a model with a **4096-token context** by default. A request can carry up to 30 messages of up to 4,000 characters each, plus the Assistant instructions, which is far more than 4096 tokens. With the default context, long Conversations may fail or lose their earlier turns, so load the model with a larger one:
+
+```sh
+lms unload google/gemma-3-12b   # if it is already loaded with the default context
+lms load google/gemma-3-12b --context-length 16384
+```
+
+Confirm the loaded context in the `CONTEXT` column of `lms ps`; it should read `16384`, not `4096`.
+
+A larger context uses more RAM (the model's KV cache grows with it). On a 24 GB Mac, `16384` is a sensible value for a 12B model such as `google/gemma-3-12b`; go higher only if you have memory to spare. 16384 covers typical Conversations but not a request at the maximum size above (roughly 30,000 tokens), so very long Conversations can still overflow it. To check before loading, add `--estimate-only` to `lms load`; the estimate is approximate.
+
 ### Manual smoke test
 
 Not part of CI. With the dev server running and the model loaded:
