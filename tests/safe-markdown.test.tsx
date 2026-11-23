@@ -66,6 +66,14 @@ describe('SafeMarkdown', () => {
     expect(container.querySelector('p')).toHaveClass('whitespace-pre-line');
   });
 
+  it('shows task-list items as literal text without a checkbox', () => {
+    const { container } = show('- [ ] todo\n- [x] done');
+    expect(container.textContent).toContain('[ ] todo');
+    expect(container.textContent).toContain('[x] done');
+    expect(container.querySelector('input')).toBeNull();
+    expect(screen.queryByRole('checkbox')).not.toBeInTheDocument();
+  });
+
   it('renders images as alt text only', () => {
     const { container } = show('![a cat](https://example.com/cat.png)');
     expect(container.querySelector('img')).toBeNull();

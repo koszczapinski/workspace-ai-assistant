@@ -30,7 +30,7 @@ function remarkHtmlAsText() {
 
 const ALLOWED_ELEMENTS = [
   'p', 'em', 'strong', 'del', 'code', 'pre', 'ul', 'ol', 'li', 'blockquote', 'hr', 'br', 'a', 'img',
-  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'input',
 ];
 
 const SAFE_LINK_PROTOCOLS = new Set(['http:', 'https:', 'mailto:']);
@@ -70,6 +70,8 @@ const components: Components = {
       <span>{children}</span>
     ),
   img: ({ alt }) => <span>{alt}</span>,
+  // GFM task-list checkboxes degrade to literal text; no input element is ever rendered.
+  input: ({ checked }) => <span>{checked ? '[x]' : '[ ]'}</span>,
   pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm [&_code]:bg-transparent [&_code]:p-0">{children}</pre>,
   code: ({ children, className }: ComponentProps<'code'>) => (
     <code className={className ?? 'rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]'}>{children}</code>
