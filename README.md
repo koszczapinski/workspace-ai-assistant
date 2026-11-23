@@ -116,23 +116,13 @@ If seven days pass before anyone opens the link, run step 4 again (`--workspace`
 
 Stop with `docker compose down`. The database lives in the named volume `db-data`, so data survives `down` and `up`; `docker compose down -v` deletes it.
 
-### Try it without an AI key
-
-To see a streamed reply without a provider, use the fake one. Set `AI_PROVIDER=fake` and `AI_MODEL=fake` in `.env` (Compose requires both to be set), then add the override file:
-
-```sh
-docker compose -f docker-compose.yml -f docker-compose.fake.yml up --build
-```
-
-The override runs only the app with `APP_ENV=test`, because the fake provider is refused in production (ADR-0002); `migrate` and `bootstrap` keep the confirmed production path, so steps 4 to 6 are unchanged. It answers every message with a deterministic stream. For evaluation only: do not expose an instance started this way. CI runs this setup as its Compose smoke test.
-
-### Before any public exposure
+### Review the Usage limits first
 
 Usage limits are basic (see [Usage limits](#usage-limits)). Review them before exposing an instance on a public URL, and read what they do not cover. Otherwise keep the instance local or private.
 
 ### Under the hood
 
-`migrate` runs the confirmed production path of `docs/adr/0002-explicit-app-env.md`, because the database host `db` is not local: `APP_ENV=production npm run db:migrate -- --confirm-database "$POSTGRES_DB"`. The name confirmed is the database Compose created, which is also the one in `DATABASE_URL` and the one the connection reports. `bootstrap` runs in the same image for the same reason.
+`migrate` runs the confirmed production path of `docs/adr/0002-explicit-app-env.md`, because the database host `db` is not local: `APP_ENV=production npm run db:migrate -- --confirm-database "$POSTGRES_DB"`. The name confirmed is the database Compose created, which is also the one in `DATABASE_URL` and the one the connection reports. `bootstrap` runs in the same image for the same reason. CI builds this Compose setup, runs `bootstrap`, accepts the printed Invitation and signs in as the new Owner; it never chats, because it runs with `AI_PROVIDER=fake`, which only a chat request would reject (the streamed fake chat is covered by the Playwright journeys).
 
 The image (`Dockerfile`) has a `migrate` target (all dependencies, `scripts/`, `src/`, `db/`) and a default `runtime` target (the Next.js standalone server only). It holds no secrets: configuration arrives from `.env` when the containers start.
 <!-- docker-compose:end -->
@@ -256,6 +246,6 @@ The committed [chat screenshot](output/playwright/critical-journey.png) shows th
 
 ## Implemented features and limitations
 
-Implemented: per-User and per-Workspace Usage limits on chat, seeded password sign-in, Member and Owner roles, an Owner-only members screen with Invitations by link (create, revoke, accept with account creation), a last-Owner guard, membership-filtered workspace list, server-side page and chat authorization, Owner-editable Workspace name and Assistant instructions, Appearance presets, streamed chat with a safe Markdown subset rendered in assistant replies (ADR-0006), stop/retry controls, stored private Conversations that a reload keeps (list, New conversation, rename, delete), a configurable AI provider per deployment (`AI_*` variables), fake-provider tests, and Playwright journeys for login-and-stream, reloading a stored Conversation, and creating and accepting an Invitation.
+Implemented: a Deployer walkthrough (Docker Compose, migration, `bootstrap`, Owner Invitation link) with a Compose smoke test in CI, per-User and per-Workspace Usage limits on chat, seeded password sign-in, Member and Owner roles, an Owner-only members screen with Invitations by link (create, revoke, accept with account creation), a last-Owner guard, membership-filtered workspace list, server-side page and chat authorization, Owner-editable Workspace name and Assistant instructions, Appearance presets, streamed chat with a safe Markdown subset rendered in assistant replies (ADR-0006), stop/retry controls, stored private Conversations that a reload keeps (list, New conversation, rename, delete), a configurable AI provider per deployment (`AI_*` variables), fake-provider tests, and Playwright journeys for login-and-stream, reloading a stored Conversation, and creating and accepting an Invitation.
 
 Limitations: a reload keeps the Conversation, but Conversations are private to their User (no sharing within a Workspace), and there is no search or automatic expiry of Conversations; no public signup, email delivery of Invitations, inviting existing Users, Workspace creation, password reset, more than two roles, file uploads, RAG, tools/function calling, billing, per-Workspace AI configuration, model selection by Owners or Members (the Deployer sets one provider and model through `AI_*`), or production-grade abuse protection (only the basic Usage limits above exist). Review the Usage limits before any public exposure. The manual smoke test with a real provider is not part of CI.

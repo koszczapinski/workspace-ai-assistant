@@ -30,7 +30,6 @@ tests
 # Docker files themselves and docs
 Dockerfile
 docker-compose.yml
-docker-compose.fake.yml
 .dockerignore
 *.md
 *.tsbuildinfo

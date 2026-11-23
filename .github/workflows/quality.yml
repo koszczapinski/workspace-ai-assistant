@@ -72,8 +72,8 @@ jobs:
             echo "AI_PROVIDER=fake"
             echo "AI_MODEL=fake"
           } > .env
-      - name: Build and start the stack (fake provider)
-        run: docker compose -f docker-compose.yml -f docker-compose.fake.yml up --build -d
+      - name: Build and start the stack (AI config is only read on the first chat, which this job never sends)
+        run: docker compose up --build -d
       - name: Wait for the app
         run: |
           for i in $(seq 1 60); do
@@ -82,12 +82,22 @@ jobs:
           done
           echo "The app did not answer on /login" >&2
           exit 1
-      - name: Bootstrap and open the Invitation link
+      - name: Bootstrap, accept the Invitation and sign in
         run: |
           docker compose run --rm migrate sh -c 'npm run bootstrap -- --workspace "CI Workspace" --confirm-database "$POSTGRES_DB"' | tee bootstrap.out
           link=$(grep -o 'http://localhost:3000/invite/[A-Za-z0-9_-]*' bootstrap.out | head -n 1)
           test -n "$link"
+          token=${link##*/invite/}
           curl -fsS "$link" | grep -q "CI Workspace"
+          curl -fsS -c cookies.txt -H 'Content-Type: application/json' \
+            -d "{\"token\":\"$token\",\"name\":\"CI Owner\",\"email\":\"owner@example.test\",\"password\":\"ci-owner-$(openssl rand -hex 8)\"}" \
+            http://localhost:3000/api/invitations/accept | tee accept.out
+          grep -q '"signedIn":true' accept.out
+          workspace=$(grep -o '"workspaceId":"[^"]*"' accept.out | cut -d'"' -f4)
+          test -n "$workspace"
+          curl -fsS -b cookies.txt "http://localhost:3000/w/$workspace" | grep -q "CI Workspace"
+          # single-use: the same link is now invalid
+          curl -fsS "$link" | grep -q "This link is not valid"
       - name: Show logs on failure
         if: failure()
         run: docker compose logs --no-color
