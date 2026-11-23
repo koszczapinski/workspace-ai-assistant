@@ -61,6 +61,11 @@ describe('SafeMarkdown', () => {
     }
   });
 
+  it('keeps single newlines in plain text visible', () => {
+    const { container } = show('line one\nline two');
+    expect(container.querySelector('p')).toHaveClass('whitespace-pre-line');
+  });
+
   it('renders images as alt text only', () => {
     const { container } = show('![a cat](https://example.com/cat.png)');
     expect(container.querySelector('img')).toBeNull();

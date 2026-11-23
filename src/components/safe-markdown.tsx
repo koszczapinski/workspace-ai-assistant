@@ -50,7 +50,7 @@ const heading = (className: string, Tag: 'h3' | 'h4' | 'h5') =>
   };
 
 const components: Components = {
-  p: ({ children }) => <p className="my-2 first:mt-0 last:mb-0">{children}</p>,
+  p: ({ children }) => <p className="my-2 whitespace-pre-line first:mt-0 last:mb-0">{children}</p>,
   h1: heading('text-base', 'h3'),
   h2: heading('text-[0.95rem]', 'h4'),
   h3: heading('text-sm', 'h5'),
@@ -70,7 +70,7 @@ const components: Components = {
       <span>{children}</span>
     ),
   img: ({ alt }) => <span>{alt}</span>,
-  pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm">{children}</pre>,
+  pre: ({ children }) => <pre className="my-2 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-sm [&_code]:bg-transparent [&_code]:p-0">{children}</pre>,
   code: ({ children, className }: ComponentProps<'code'>) => (
     <code className={className ?? 'rounded bg-muted px-1 py-0.5 font-mono text-[0.9em]'}>{children}</code>
   ),
@@ -90,6 +90,7 @@ export function SafeMarkdown({ text, streaming = false }: { text: string; stream
       allowedElements={ALLOWED_ELEMENTS}
       unwrapDisallowed
       components={components}
+      // Safety rests on isSafeLink in the `a` component; the default transform would only hide the original URL.
       urlTransform={url => url}
     >
       {streaming ? remend(text) : text}

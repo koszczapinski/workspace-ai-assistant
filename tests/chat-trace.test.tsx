@@ -123,16 +123,17 @@ describe('Trace chat activity', () => {
     await act(async () => {
       stream.chunk({ type: 'start', messageId: 'assistant-md' });
       stream.chunk({ type: 'text-start', id: 'answer-md' });
-      stream.chunk({ type: 'text-delta', id: 'answer-md', delta: 'Some **partial' });
+      stream.chunk({ type: 'text-delta', id: 'answer-md', delta: 'Some **done** and **partial' });
     });
 
     const reply = await screen.findByLabelText('Assistant response');
-    expect(reply.querySelector('strong')).toHaveTextContent('partial');
+    expect(reply.querySelector('strong')).toHaveTextContent('done');
     expect(screen.getByLabelText('Your message')).toHaveTextContent('**mine**');
     expect(screen.getByLabelText('Your message').querySelector('strong')).toBeNull();
 
     fireEvent.click(screen.getByRole('button', { name: 'Stop response' }));
     await waitFor(() => expect(screen.getByText('Response stopped.')).toBeInTheDocument());
-    expect(screen.getByLabelText('Assistant response')).toHaveTextContent('Some **partial');
+    expect(screen.getByLabelText('Assistant response')).toHaveTextContent('Some done and **partial');
+    expect(screen.getByLabelText('Assistant response').querySelector('strong')).toHaveTextContent('done');
   });
 });
