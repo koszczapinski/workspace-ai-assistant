@@ -100,6 +100,8 @@ Not part of CI. With the dev server running and the model loaded:
 
 Docker Compose (the app and PostgreSQL) is the one supported way for a Deployer to run an instance. The full Deployer walkthrough is separate; this is the short path.
 
+Memory: building the image (`next build`) needs about 4 GiB of RAM available to Docker. With 2 GiB the build is killed (`SIGKILL` during "Running TypeScript"). On Colima, for example, run `colima stop && colima start --memory 4`; on Docker Desktop, raise Memory in Settings → Resources.
+
 1. Copy `.env.compose.example` to `.env` and fill it in. `.env` is git-ignored and never copied into the image.
    - `POSTGRES_PASSWORD`: URL-safe characters only, for example `openssl rand -hex 24`. `POSTGRES_USER` and `POSTGRES_DB` default to `workspace_ai`.
    - `BETTER_AUTH_SECRET`: at least 32 random characters. `BETTER_AUTH_URL`: required, the URL people open (it must match `APP_PORT` or your domain, or sign-in and Invitation links break); `APP_PORT` changes the host port.
