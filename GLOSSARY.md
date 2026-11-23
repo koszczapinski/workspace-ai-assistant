@@ -38,7 +38,7 @@ A Workspace-owned choice of background, font and accent from closed preset lists
 _Avoid_: Theme, skin
 
 **Invitation**:
-A single-use, expiring link from an Owner that lets one person create an account and join as a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
+A single-use, expiring link that lets one person create an account and join a Workspace. Owners create Member Invitations; the Deployer's `bootstrap` command creates the first Workspace's Owner Invitation. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
 _Avoid_: Invite code, signup link
 
 **Deployer**:
