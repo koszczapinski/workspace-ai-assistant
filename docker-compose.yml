@@ -50,7 +50,7 @@ services:
       APP_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:-workspace_ai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-workspace_ai}
       BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?Set BETTER_AUTH_SECRET in .env (at least 32 random characters)}
-      BETTER_AUTH_URL: ${BETTER_AUTH_URL:-http://localhost:3000}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL in .env to the address people open, for example http://localhost:3000}
       AI_PROVIDER: ${AI_PROVIDER:?Set AI_PROVIDER in .env (openai or openai-compatible; fake is refused in production)}
       AI_MODEL: ${AI_MODEL:?Set AI_MODEL in .env}
       AI_API_KEY: ${AI_API_KEY:-}
