@@ -31,7 +31,7 @@ It stays a small, finished codebase: one increment at a time, each its own PR wi
 Order and status live in `.scratch/roadmap/roadmap.md`. In short:
 
 1. **Configurable AI provider** (issue #29: #32 merged, #33 in review, then #34). One provider per deployment, chosen by environment variables; includes an OpenAI-compatible provider so a local model works.
-2. **Bootstrap and deployment.** A `bootstrap` script creates a Workspace and prints a single-use Owner Invitation link. Docker Compose (app and PostgreSQL) is the one supported deploy path.
+2. **Bootstrap and deployment** (done: #39 migrate, #40 bootstrap, #41 Compose, #42 walkthrough and CI smoke test). A `bootstrap` script creates a Workspace and prints a single-use Owner Invitation link. Docker Compose (app and PostgreSQL) is the one supported deploy path.
 3. **RAG** (decisions below).
 4. **Later:** per-Workspace Usage limits; an audit log of Owner actions.
 
@@ -52,4 +52,4 @@ Billing; public signup; Workspace creation in the UI; more than two roles; model
 
 ## Deployment
 
-One Deployer, one instance, Docker Compose as the tested path. Local models (LM Studio, Ollama, vLLM) work through the `openai-compatible` provider and are not part of CI. There is no public demo: Usage limits are basic, and the Deployer must review them before any public exposure.
+One Deployer, one instance, Docker Compose as the tested path. The README walks a Deployer from clone to first Conversation (environment, Compose, migration, `bootstrap`, Owner Invitation link). CI builds the Compose setup with the fake provider (`docker-compose.fake.yml`, app only, `APP_ENV=test`), runs `bootstrap` and opens the Invitation link. Local models (LM Studio, Ollama, vLLM) work through the `openai-compatible` provider and are not part of CI. There is no public demo: Usage limits are basic, and the Deployer must review them before any public exposure.

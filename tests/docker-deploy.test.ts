@@ -60,4 +60,36 @@ describe('Docker deploy files', () => {
     }
     expect(template).not.toContain('AI_PROVIDER=fake');
   });
+
+  it('gives the migrate service the public URL so bootstrap can build the Invitation link', () => {
+    expect(compose).toContain('BETTER_AUTH_URL: ${BETTER_AUTH_URL:?');
+    expect(compose.match(/^\s+BETTER_AUTH_URL:/gm)).toHaveLength(2);
+  });
+
+  describe('fake provider override', () => {
+    const override = read('docker-compose.fake.yml');
+
+    it('switches only the app to the fake provider and leaves migrate and bootstrap in production', () => {
+      expect(override).toMatch(/AI_PROVIDER: fake/);
+      expect(override).toMatch(/APP_ENV: test/);
+      expect(override).not.toMatch(/^\s+(migrate|db):/m);
+    });
+
+    it('is the file CI and the README use for the fake-provider path', () => {
+      expect(read('.github/workflows/quality.yml')).toContain('docker-compose.fake.yml');
+      expect(read('README.md')).toContain('docker-compose.fake.yml');
+    });
+  });
+
+  it('has a CI job that builds Compose, runs bootstrap and opens the Invitation link', () => {
+    const workflow = read('.github/workflows/quality.yml');
+    expect(workflow).toContain('bootstrap');
+    expect(workflow).toContain('--confirm-database');
+    expect(workflow).toMatch(/\/invite\//);
+  });
+
+  it('no longer promises a public demo', () => {
+    expect(read('README.md')).not.toMatch(/public demo(?! \()/i);
+    expect(read('README.md')).not.toMatch(/^## Two-minute demo/m);
+  });
 });

@@ -36,15 +36,7 @@ APP_ENV=production DATABASE_URL=... npm run db:migrate -- --confirm-database <na
 
 `<name>` must equal the database in `DATABASE_URL` and the name the live connection reports (`current_database()`). Otherwise the command refuses and changes nothing. A missing or unknown `APP_ENV` is refused with or without the flag, and the flag does not relax the development or test rules. `db:seed` never runs in production. See the note in `docs/adr/0002-explicit-app-env.md`.
 
-**Deployer: first run (bootstrap).** On a migrated database, create the first Workspace and its Owner Invitation:
-
-```bash
-npm run bootstrap -- --workspace "Acme" [--confirm-database <name>]
-```
-
-It prints "Created Workspace". If the 7 days pass before anyone opens the link, run the command again (`--workspace` is optional now): while the one Workspace still has no Owner, it creates nothing, prints "Re-issued the Owner Invitation", and gives a fresh link; earlier pending bootstrap Invitations are revoked, so only the newest link works. If `--workspace` is given it must equal the existing name (nothing is renamed). Once the Workspace has an Owner, or when more than one Workspace exists, it refuses and writes nothing.
-
-It prints a single-use Owner Invitation link, valid for 7 days, once; only a hash of its token is stored, so copy it now. The link is built from `BETTER_AUTH_URL`, which must be the public address of the app. Open it, create your account, and you are the Owner of the Workspace. The command uses the same database confirmation as `db:migrate` (`--confirm-database` is required with `APP_ENV=production`), validates the name like Workspace settings (1 to 60 characters), and never creates a second Workspace. Further Members come from the Invitations screen; an Owner promotes a Member to Owner on the Members screen.
+**Deployer: first run (bootstrap).** On a Compose instance, follow the [Deployer walkthrough](#deployer-walkthrough-from-clone-to-first-conversation). Outside Compose, run `npm run bootstrap -- --workspace "Acme" [--confirm-database <name>]` on a migrated database; it uses the same database confirmation as `db:migrate` and prints the same single-use link.
 
 Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
 
@@ -96,21 +88,51 @@ Not part of CI. With the dev server running and the model loaded:
 - [ ] **Cancel on Workspace change:** start a reply, switch Workspace; generation is cancelled and messages, partial output and errors are cleared.
 
 <!-- docker-compose:start -->
-## Run with Docker Compose
+## Deployer walkthrough: from clone to first Conversation
 
-Docker Compose (the app and PostgreSQL) is the one supported way for a Deployer to run an instance. The full Deployer walkthrough is separate; this is the short path.
+Docker Compose (the app and PostgreSQL) is the one supported way for a Deployer to run an instance. This section is all you need; the other sections are for developing the starter itself. There is no public demo (ADR-0005): you run your own instance.
 
-Memory: building the image (`next build`) needs about 4 GiB of RAM available to Docker. With 2 GiB the build is killed (`SIGKILL` during "Running TypeScript"). On Colima, for example, run `colima stop && colima start --memory 4`; on Docker Desktop, raise Memory in Settings → Resources.
+Requirements: Docker with Compose v2, and about 4 GiB of RAM available to Docker. Building the image (`next build`) is killed with 2 GiB (`SIGKILL` during "Running TypeScript"). On Colima run `colima stop && colima start --memory 4`; on Docker Desktop raise Memory in Settings → Resources.
 
-1. Copy `.env.compose.example` to `.env` and fill it in. `.env` is git-ignored and never copied into the image.
+1. **Clone** your fork and enter it.
+2. **Configure.** Copy `.env.compose.example` to `.env` and fill it in. `.env` is git-ignored and never copied into the image.
    - `POSTGRES_PASSWORD`: URL-safe characters only, for example `openssl rand -hex 24`. `POSTGRES_USER` and `POSTGRES_DB` default to `workspace_ai`.
-   - `BETTER_AUTH_SECRET`: at least 32 random characters. `BETTER_AUTH_URL`: required, the URL people open (it must match `APP_PORT` or your domain, or sign-in and Invitation links break); `APP_PORT` changes the host port.
-   - `AI_PROVIDER` and `AI_MODEL`, plus `AI_API_KEY` (`openai`) or `AI_BASE_URL` (`openai-compatible`). The containers run with `APP_ENV=production`, so `AI_PROVIDER=fake` is refused. From inside a container, `localhost` is the container: reach LM Studio on the host at `http://host.docker.internal:1234/v1`.
-   - Compose stops with a message naming any of `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `AI_PROVIDER` or `AI_MODEL` that is missing.
-2. Start it: `docker compose up --build`. Open `http://localhost:3000/login` (or your `APP_PORT`).
-3. Stop with `docker compose down`. The database lives in the named volume `db-data`, so data survives `down` and `up`; `docker compose down -v` deletes it.
+   - `BETTER_AUTH_SECRET`: at least 32 random characters, for example `openssl rand -hex 32`.
+   - `BETTER_AUTH_URL`: the URL people open. It must match `APP_PORT` (default 3000) or your domain, or sign-in and Invitation links break.
+   - `AI_PROVIDER` and `AI_MODEL`, plus `AI_API_KEY` (`openai`) or `AI_BASE_URL` (`openai-compatible`). The containers run with `APP_ENV=production`, so `AI_PROVIDER=fake` is refused. From inside a container `localhost` is the container: reach LM Studio on the host at `http://host.docker.internal:1234/v1`.
+   - Compose stops with a message naming any of `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `AI_PROVIDER` or `AI_MODEL` that is missing.
+3. **Start.** Run `docker compose up --build`. PostgreSQL starts and passes its healthcheck, then the one-shot `migrate` service applies `db/migrations`, then the app starts. If the migration fails, the app does not start. The seed never runs and there are no Demo users, so a fresh instance has no accounts.
+4. **Create the first Workspace and Owner.** In a second terminal, in the same directory:
 
-What happens on `up`: PostgreSQL starts and passes its healthcheck, then the one-shot `migrate` service applies `db/migrations`, then the app starts. Because the database host is the container `db`, it is not local, so `migrate` runs the confirmed production path of `docs/adr/0002-explicit-app-env.md`: `APP_ENV=production npm run db:migrate -- --confirm-database "$POSTGRES_DB"`. The name confirmed is the database Compose created, which is also the one in `DATABASE_URL` and the one the connection reports. If the migration fails, the app does not start. The seed is never run and no Demo users exist, so a fresh instance has no accounts yet (the `bootstrap` command of ticket #40 creates the first Workspace and Owner Invitation; it is not part of this change, and the walkthrough is ticket #42). Compose runs with basic Usage limits only; review them before any public exposure.
+   ```sh
+   docker compose run --rm migrate sh -c 'npm run bootstrap -- --workspace "Acme" --confirm-database "$POSTGRES_DB"'
+   ```
+
+   It prints "Created Workspace" and a single-use Owner Invitation link, once. Copy it now: only a hash of its token is stored. The link is valid for 7 days and built from `BETTER_AUTH_URL`.
+5. **Join as Owner.** Open the link, enter a name, an email and a password, and select Create account and join. You are the Owner of the Workspace and land in it.
+6. **Have your first Conversation.** Type a message. The reply streams in, and a reload keeps the Conversation. Further Members come from the Members screen (Create invitation link); an Owner can promote a Member to Owner there.
+
+If seven days pass before anyone opens the link, run step 4 again (`--workspace` is optional now). While the one Workspace has no Owner it creates nothing, prints "Re-issued the Owner Invitation" and gives a fresh link; earlier pending bootstrap Invitations are revoked. A given `--workspace` must equal the existing name (nothing is renamed). Once the Workspace has an Owner, or when more than one Workspace exists, it refuses and writes nothing. The name is validated like Workspace settings (1 to 60 characters).
+
+Stop with `docker compose down`. The database lives in the named volume `db-data`, so data survives `down` and `up`; `docker compose down -v` deletes it.
+
+### Try it without an AI key
+
+To see a streamed reply without a provider, use the fake one. Set `AI_PROVIDER=fake` and `AI_MODEL=fake` in `.env` (Compose requires both to be set), then add the override file:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.fake.yml up --build
+```
+
+The override runs only the app with `APP_ENV=test`, because the fake provider is refused in production (ADR-0002); `migrate` and `bootstrap` keep the confirmed production path, so steps 4 to 6 are unchanged. It answers every message with a deterministic stream. For evaluation only: do not expose an instance started this way. CI runs this setup as its Compose smoke test.
+
+### Before any public exposure
+
+Usage limits are basic (see [Usage limits](#usage-limits)). Review them before exposing an instance on a public URL, and read what they do not cover. Otherwise keep the instance local or private.
+
+### Under the hood
+
+`migrate` runs the confirmed production path of `docs/adr/0002-explicit-app-env.md`, because the database host `db` is not local: `APP_ENV=production npm run db:migrate -- --confirm-database "$POSTGRES_DB"`. The name confirmed is the database Compose created, which is also the one in `DATABASE_URL` and the one the connection reports. `bootstrap` runs in the same image for the same reason.
 
 The image (`Dockerfile`) has a `migrate` target (all dependencies, `scripts/`, `src/`, `db/`) and a default `runtime` target (the Next.js standalone server only). It holds no secrets: configuration arrives from `.env` when the containers start.
 <!-- docker-compose:end -->
@@ -151,7 +173,7 @@ Both variables are optional and are listed in `.env.example`. A value that is no
 
 ### Before any public exposure
 
-There is no public demo (ADR-0005). The Usage limits are basic, so review them before exposing an instance on a public URL: keep them enabled (the defaults are a sensible start; do not disable them or set them very high) and keep the database reachable. Otherwise keep the instance local or private.
+There is no public instance (ADR-0005). The Usage limits are basic, so review them before exposing an instance on a public URL: keep them enabled (the defaults are a sensible start; do not disable them or set them very high) and keep the database reachable. Otherwise keep the instance local or private.
 
 ### What this is and is not
 
@@ -214,9 +236,9 @@ flowchart LR
 |---|---|
 | ![Chat Streamed - Dark](output/playwright/ui/chat-streamed-desktop-dark.png) | ![Chat Empty - Dark](output/playwright/ui/chat-empty-desktop-dark.png) |
 
-## Two-minute demo
+## Two-minute tour (local, seeded Demo users)
 
-A local walkthrough with the seeded Demo users.
+A walkthrough of a local development instance with the seeded Demo users.
 
 1. Sign in as User A with the locally configured demo credentials.
 2. Open Northstar Studio, send “Plan a short demo,” and watch the response arrive as a stream. Reload the page: the Conversation stays, in the Conversations list and on screen with both messages.

@@ -32,6 +32,8 @@ services:
       APP_ENV: production
       DATABASE_URL: postgres://${POSTGRES_USER:-workspace_ai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-workspace_ai}
       POSTGRES_DB: ${POSTGRES_DB:-workspace_ai}
+      # `bootstrap` (run in this service, see README) builds the Invitation link from it.
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL in .env to the address people open, for example http://localhost:3000}
     # sh -c so the confirmed name is read from the container environment and can never differ from the database created above.
     command: ["sh", "-c", "npm run db:migrate -- --confirm-database \"$$POSTGRES_DB\""]
     depends_on:

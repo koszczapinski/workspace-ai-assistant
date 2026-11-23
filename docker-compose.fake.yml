@@ -1,0 +1,12 @@
+# Try the stack without an AI key: `docker compose -f docker-compose.yml -f docker-compose.fake.yml up --build`
+# (README: "Run with Docker Compose"). CI uses the same file for its smoke test.
+#
+# Only the app changes. The fake provider is allowed only when APP_ENV is development or test (ADR-0002),
+# so the app runs with APP_ENV=test here. `migrate` and `bootstrap` keep the confirmed production path.
+# For evaluation only: do not expose an instance started this way.
+
+services:
+  app:
+    environment:
+      APP_ENV: test
+      AI_PROVIDER: fake

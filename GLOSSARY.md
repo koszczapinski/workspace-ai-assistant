@@ -42,7 +42,7 @@ A single-use, expiring link that lets one person create an account and join a Wo
 _Avoid_: Invite code, signup link
 
 **Deployer**:
-The person who runs one instance of the application and sets its environment, including the AI provider. It is not a role inside the application: Owner and Member are roles in a Workspace. Users never choose the provider.
+The person who runs one instance of the application and sets its environment, including the AI provider. Their path from clone to first Conversation (Compose, migration, `bootstrap`, Owner Invitation link) is the README's Deployer walkthrough, and CI smoke-tests it with the fake provider. It is not a role inside the application: Owner and Member are roles in a Workspace. Users never choose the provider.
 _Avoid_: Admin, operator
 
 **Demo user**:

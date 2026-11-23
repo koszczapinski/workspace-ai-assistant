@@ -57,3 +57,40 @@ jobs:
             test-results/
           if-no-files-found: ignore
       - run: npm run build
+
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write a synthetic .env
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=ci$(openssl rand -hex 12)"
+            echo "BETTER_AUTH_SECRET=$(openssl rand -hex 32)"
+            echo "BETTER_AUTH_URL=http://localhost:3000"
+            echo "AI_PROVIDER=fake"
+            echo "AI_MODEL=fake"
+          } > .env
+      - name: Build and start the stack (fake provider)
+        run: docker compose -f docker-compose.yml -f docker-compose.fake.yml up --build -d
+      - name: Wait for the app
+        run: |
+          for i in $(seq 1 60); do
+            curl -fsS -o /dev/null http://localhost:3000/login && exit 0
+            sleep 2
+          done
+          echo "The app did not answer on /login" >&2
+          exit 1
+      - name: Bootstrap and open the Invitation link
+        run: |
+          docker compose run --rm migrate sh -c 'npm run bootstrap -- --workspace "CI Workspace" --confirm-database "$POSTGRES_DB"' | tee bootstrap.out
+          link=$(grep -o 'http://localhost:3000/invite/[A-Za-z0-9_-]*' bootstrap.out | head -n 1)
+          test -n "$link"
+          curl -fsS "$link" | grep -q "CI Workspace"
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs --no-color
+      - name: Stop the stack
+        if: always()
+        run: docker compose down -v
