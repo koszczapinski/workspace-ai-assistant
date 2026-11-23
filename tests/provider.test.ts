@@ -169,7 +169,7 @@ describe('openai-compatible provider', () => {
 
     const chunks = await readAll(await streamAssistant({ instructions: 'Be brief.', messages: [hello] }));
 
-    expect(textOf(chunks)).toBe('Hi there');
+    expect(chunks.filter(chunk => chunk.type === 'text-delta').map(chunk => chunk.delta)).toEqual(['Hi ', 'there']);
     expect(chunks.at(-1)).toMatchObject({ type: 'finish' });
     const [url, init] = callOf(fetchStub);
     expect(url).toBe('http://localhost:1234/v1/chat/completions');
@@ -198,18 +198,33 @@ describe('openai-compatible provider', () => {
     expect(new Headers(callOf(fetchStub)[1].headers).get('authorization')).toBe('Bearer test-key');
   });
 
-  it('ends the stream with abort when the signal aborts', async () => {
+  it('ends a started stream with abort when the signal aborts, and passes the signal to fetch', async () => {
     configure();
     const controller = new AbortController();
-    vi.stubGlobal('fetch', vi.fn((_url: string, init: RequestInit) => new Promise<Response>((_resolve, reject) => {
-      init.signal?.addEventListener('abort', () => reject(init.signal?.reason ?? new DOMException('Aborted', 'AbortError')));
-    })));
+    const encoder = new TextEncoder();
+    const fetchStub = vi.fn(async (_url: string, init: RequestInit) => {
+      const body = new ReadableStream<Uint8Array>({
+        start(streamController) {
+          streamController.enqueue(encoder.encode(chatChunk({ role: 'assistant', content: '' }) + chatChunk({ content: 'Hi ' })));
+          // The server keeps the response open until the request is aborted.
+          init.signal?.addEventListener('abort', () => streamController.error(init.signal?.reason ?? new DOMException('Aborted', 'AbortError')));
+        },
+      });
+      return new Response(body, { headers: { 'content-type': 'text/event-stream' } });
+    });
+    vi.stubGlobal('fetch', fetchStub);
 
-    const stream = await streamAssistant({ instructions: 'Demo', messages: [hello], signal: controller.signal });
+    const reader = (await streamAssistant({ instructions: 'Demo', messages: [hello], signal: controller.signal })).getReader();
+    const chunks: UIMessageChunk[] = [];
+    while (textOf(chunks) === '') chunks.push((await reader.read()).value!);
     controller.abort();
-    const chunks = await readAll(stream);
+    for (let next = await reader.read(); !next.done; next = await reader.read()) chunks.push(next.value);
 
+    expect(textOf(chunks)).toBe('Hi ');
     expect(chunks.at(-1)).toMatchObject({ type: 'abort' });
+    const fetchSignal = callOf(fetchStub)[1].signal;
+    expect(fetchSignal).toBeInstanceOf(AbortSignal);
+    expect(fetchSignal?.aborted).toBe(true);
   });
 
   it('ends the stream with an error when the server is unreachable', async () => {
