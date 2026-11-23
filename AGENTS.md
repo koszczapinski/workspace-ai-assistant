@@ -1,6 +1,6 @@
 # Agent instructions
 
-Read `docs/spec.md` before writing code. The specification is the source of truth for scope, stack, behavior, and tests.
+Read `docs/product.md` and `GLOSSARY.md` before writing code. They are the source of truth for scope and language. `docs/spec.md` is the frozen MVP record: it still defines the baseline behavior and test cases, but where it disagrees with `docs/product.md`, the product document wins.
 
 ## Stack
 
@@ -18,9 +18,11 @@ Do not add TanStack Query or a global state library unless there is a demonstrat
 
 ## Scope
 
-Target a complete two-evening MVP. Prefer a narrow, finished implementation over extra features.
+Work in small, finished increments toward a self-hosted starter (ADR-0005). Prefer a narrow, finished implementation over extra features.
 
-Out of scope: RAG, file uploads, vector databases, billing, tools or function calling, public signup, Workspace creation, inviting existing Users, email delivery of Invitations, password reset, more than two roles, model selection, and production-grade abuse protection.
+Planned, in order (see `.scratch/roadmap/roadmap.md`): configurable AI provider (#29), bootstrap script and Docker Compose, then RAG with file uploads and a vector store inside PostgreSQL. Do not start a planned item unless its issue is the task.
+
+Out of scope: billing, tools or function calling, public signup, Workspace creation in the UI, inviting existing Users, email delivery of Invitations, password reset, more than two roles, model selection, per-Workspace AI configuration, and production-grade abuse protection.
 
 A Conversation is stored in PostgreSQL, owned by one User in one Workspace, and private to that User; no other Member, including an Owner, can read it. Chat messages are stored only as part of that private Conversation.
 
@@ -50,7 +52,7 @@ See `docs/adr/0002-explicit-app-env.md`.
 
 ## Tests
 
-Tests must use a fake provider or a controlled stream. They must not require a real AI key or paid calls. Cover the cases listed in `docs/spec.md`.
+Tests must use a fake provider or a controlled stream. They must not require a real AI key or paid calls. Cover the cases listed in `docs/spec.md` and in the spec of the increment you are building.
 
 ## Quality and merge
 

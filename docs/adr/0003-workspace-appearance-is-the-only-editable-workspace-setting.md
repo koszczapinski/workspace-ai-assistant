@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: accepted, superseded in part by ADR-0004 (the Workspace name and Assistant instructions are now editable by Owners; the Appearance decision stands)
 date: 2026-11-23
 ---
 

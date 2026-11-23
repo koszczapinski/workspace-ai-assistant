@@ -1,6 +1,14 @@
 # Post-MVP roadmap
 
-Goal: keep the project a portfolio piece that shows depth. One small, finished increment at a time (about 1-2 evenings), each its own PR with its spec and tickets under `.scratch/<feature>/`. `docs/spec.md` stays the MVP spec.
+Goal: a self-hosted starter (ADR-0005; living description in `docs/product.md`). One small, finished increment at a time (about 1-2 evenings), each its own PR with its spec and tickets. `docs/spec.md` is the frozen MVP record.
+
+## Next (decided 2026-11-23, in this order)
+
+1. **Configurable AI provider** (spec: GitHub issue #29; tickets #32 (merged, PR #35) → #33 (PR #36 open) → #34). One provider per deployment, chosen by `AI_PROVIDER`, `AI_MODEL`, `AI_BASE_URL`, `AI_API_KEY`, `AI_FAKE_DELAY_MS`; includes an OpenAI-compatible provider, verified against LM Studio.
+2. **Bootstrap and deployment.** A `bootstrap` script creates a Workspace and prints a single-use Owner Invitation link (rules of ADR-0002). Docker Compose (app and PostgreSQL) is the one supported deploy path. Needs its own spec.
+3. **RAG.** Owner-uploaded Documents per Workspace, pgvector in the same PostgreSQL, embedding model per deployment. Decisions already taken are in `docs/product.md`; the spec comes when the increment starts.
+
+Tools and function calling stay out of scope until a separate decision after RAG.
 
 `GLOSSARY.md` and the out-of-scope list in `AGENTS.md` describe the system as it is. Each feature's tickets include an acceptance item to update them in the same PR.
 
@@ -30,11 +38,9 @@ Goal: keep the project a portfolio piece that shows depth. One small, finished i
 - Per-Workspace Usage limits (configurable by an Owner).
 - An audit log of Owner actions (settings changes, Membership changes).
 
-RAG and tool use / function calling. They stay out of scope for the current version (`AGENTS.md`), but they are not ruled out of future iterations. Their order and scope get decided in a later grilling round, once the five increments above are done.
-
 ## Not planned
 
-Model selection, billing.
+Billing; public signup; Workspace creation in the UI; model selection by Owners or Members; per-Workspace AI configuration and named model profiles (ADR-0005); permissions per Document.
 
 ## Glossary changes to land with the features
 

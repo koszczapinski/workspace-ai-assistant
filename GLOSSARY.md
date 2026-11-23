@@ -41,6 +41,10 @@ _Avoid_: Theme, skin
 A single-use, expiring link from an Owner that lets one person create an account and join as a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
 _Avoid_: Invite code, signup link
 
+**Deployer**:
+The person who runs one instance of the application and sets its environment, including the AI provider. It is not a role inside the application: Owner and Member are roles in a Workspace. Users never choose the provider.
+_Avoid_: Admin, operator
+
 **Demo user**:
 A synthetic User created by the seed, with exactly one Membership and a Workspace whose Assistant instructions differ from the other Demo user's (A↔A, B↔B). Used to verify isolation.
 _Avoid_: Test user, seed user
@@ -65,6 +69,10 @@ _Avoid_: System prompt, system instructions
 **Conversation**:
 The messages one User exchanges with the assistant in one Workspace, stored in PostgreSQL, owned by that User and visible only to them. A reload restores it. Changing Workspace or signing out clears the screen, and the stored Conversation loads again on return.
 _Avoid_: Session, thread
+
+**Document**:
+Text uploaded by an Owner as knowledge of one Workspace. It belongs to the Workspace, not to a User, and the assistant may use it in every Conversation of that Workspace, naming it as a source. It is knowledge of the whole Workspace: any Member can obtain its content through the assistant, so an Owner uploads nothing they do not want Members to see. There are no Documents visible to only some Members. Deleting the Workspace deletes its Documents. Planned (ADR-0005).
+_Avoid_: File, attachment, knowledge base
 
 **Title**:
 The name of a Conversation shown in its User's list: the truncated first message unless the User renamed it.

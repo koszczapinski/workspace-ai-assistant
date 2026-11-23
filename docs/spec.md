@@ -1,5 +1,7 @@
 # Workspace AI Assistant — MVP Specification
 
+> **Frozen MVP record.** The living description of scope and direction is `docs/product.md` (ADR-0005); the vocabulary is `GLOSSARY.md`. Where they disagree with this file, they win. This file is not updated as the product grows.
+
 ## Goal
 
 Build a small multi-tenant AI chat application for a frontend portfolio. Demonstrate streamed responses, reliable chat interactions, and server-enforced workspace isolation.
