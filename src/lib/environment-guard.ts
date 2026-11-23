@@ -2,8 +2,9 @@
  * Decides whether a destructive database operation (seed, migrate, test cleanup) may run.
  * See docs/adr/0002-explicit-app-env.md: APP_ENV must be explicit, test requires the workspace_ai_test
  * database and development a localhost host. Production and a missing value are refused, except for
- * one operation: assertMigrationAllowed (reached through assertPostgresMigrationAllowed, which only
- * scripts/migrate.ts calls) accepts a production database when the Deployer confirms its name.
+ * confirmed operations: assertConfirmedOperationAllowed (reached through
+ * assertPostgresConfirmedOperationAllowed, which only scripts/migrate.ts and scripts/bootstrap.ts call)
+ * accepts a production database when the Deployer confirms its name.
  * The confirmation guards against a typo; it is not authorization.
  */
 import type postgres from 'postgres';
@@ -67,7 +68,11 @@ export async function assertDatabaseOperationAllowed(input: DatabaseOperationGua
   }
 }
 
-export type MigrationGuardInput = {
+/** The operations that may run on a confirmed production database. Nothing else may. */
+export type ConfirmedOperation = 'migrate' | 'bootstrap';
+
+export type ConfirmedOperationGuardInput = {
+  operation: ConfirmedOperation;
   appEnv: string | undefined;
   databaseUrl: string;
   /** The value of `--confirm-database`, if given. Only ever consulted when APP_ENV is production. */
@@ -76,12 +81,12 @@ export type MigrationGuardInput = {
 };
 
 /**
- * The one deliberate production exception (ADR-0002): a Deployer may migrate a non-local database.
- * Only migrate calls this. With APP_ENV=production it requires the confirmed name to equal both the
+ * The one deliberate production exception (ADR-0002): a Deployer may migrate or bootstrap a non-local database.
+ * Only scripts/migrate.ts and scripts/bootstrap.ts call this. With APP_ENV=production it requires the confirmed name to equal both the
  * database in the URL and the one the live connection reports. Every other APP_ENV, including a
  * missing one, goes through the regular guard (development and test only) and ignores the confirmation.
  */
-export async function assertMigrationAllowed(input: MigrationGuardInput): Promise<void> {
+export async function assertConfirmedOperationAllowed(input: ConfirmedOperationGuardInput): Promise<void> {
   if (input.appEnv !== 'production') {
     return assertDatabaseOperationAllowed({
       appEnv: input.appEnv,
@@ -92,10 +97,10 @@ export async function assertMigrationAllowed(input: MigrationGuardInput): Promis
   }
 
   const target = describeTarget(input.appEnv, input.databaseUrl);
-  const refuse = (reason: string) => new Error(`Refusing to migrate the database: ${reason} (${target.summary})`);
+  const refuse = (reason: string) => new Error(`Refusing to ${input.operation} the database: ${reason} (${target.summary})`);
 
   if (!input.confirmDatabase) {
-    throw refuse(`production migrations need confirmation, pass --confirm-database ${target.database}`);
+    throw refuse(`a production ${input.operation} needs confirmation, pass --confirm-database ${target.database}`);
   }
   if (input.confirmDatabase !== target.database) {
     throw refuse(`--confirm-database ${input.confirmDatabase} does not match the database in DATABASE_URL`);
@@ -147,13 +152,15 @@ export function assertPostgresOperationAllowed(
   });
 }
 
-/** The migrate-only guard for an open postgres.js connection; see assertMigrationAllowed. */
-export function assertPostgresMigrationAllowed(
+/** The guard of the two scripts that accept a confirmed production database, for an open postgres.js connection. */
+export function assertPostgresConfirmedOperationAllowed(
   sql: postgres.Sql,
+  operation: ConfirmedOperation,
   databaseUrl: string,
   confirmDatabase: string | undefined,
 ): Promise<void> {
-  return assertMigrationAllowed({
+  return assertConfirmedOperationAllowed({
+    operation,
     appEnv: process.env.APP_ENV,
     databaseUrl,
     confirmDatabase,

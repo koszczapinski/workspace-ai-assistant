@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { assertDatabaseOperationAllowed, assertMigrationAllowed, parseConfirmDatabase } from '@/lib/environment-guard';
+import { assertConfirmedOperationAllowed, assertDatabaseOperationAllowed, parseConfirmDatabase } from '@/lib/environment-guard';
 
 const testUrl = 'postgres://postgres:s3cret-pw@localhost:5433/workspace_ai_test';
 
@@ -66,7 +66,7 @@ it('refuses development against a remote host', async () => {
 const prodUrl = 'postgres://app:s3cret-pw@db.example.com:5432/workspace_ai_prod';
 
 function migrationGuard(appEnv: string | undefined, url: string, confirmDatabase: string | undefined, connected: string) {
-  return assertMigrationAllowed({ appEnv, databaseUrl: url, confirmDatabase, currentDatabase: async () => connected });
+  return assertConfirmedOperationAllowed({ operation: 'migrate', appEnv, databaseUrl: url, confirmDatabase, currentDatabase: async () => connected });
 }
 
 it('migrates production when the confirmed name matches the URL and the live connection', async () => {
@@ -75,7 +75,8 @@ it('migrates production when the confirmed name matches the URL and the live con
 
 it('refuses a production migration without confirmation, without querying the connection', async () => {
   let queried = false;
-  const error = await assertMigrationAllowed({
+  const error = await assertConfirmedOperationAllowed({
+    operation: 'migrate',
     appEnv: 'production',
     databaseUrl: prodUrl,
     confirmDatabase: undefined,
@@ -136,6 +137,30 @@ it('keeps every other guarded operation closed to production, even with a matchi
       currentDatabase: async () => 'workspace_ai_prod',
     }),
   ).rejects.toThrow(/APP_ENV must be development or test/);
+});
+
+function operationGuard(operation: 'migrate' | 'bootstrap', appEnv: string | undefined, url: string, confirmDatabase: string | undefined, connected: string) {
+  return assertConfirmedOperationAllowed({ operation, appEnv, databaseUrl: url, confirmDatabase, currentDatabase: async () => connected });
+}
+
+it('lets bootstrap write to a production database only with a matching confirmation, naming bootstrap in the refusal', async () => {
+  await expect(operationGuard('bootstrap', 'production', prodUrl, 'workspace_ai_prod', 'workspace_ai_prod')).resolves.toBeUndefined();
+  const error = await operationGuard('bootstrap', 'production', prodUrl, undefined, 'workspace_ai_prod').then(() => null, (reason: Error) => reason);
+  expect(error?.message).toMatch(/bootstrap/);
+  expect(error?.message).toMatch(/--confirm-database workspace_ai_prod/);
+  expect(error?.message).not.toContain('s3cret-pw');
+  await expect(operationGuard('bootstrap', 'production', prodUrl, 'other_db', 'workspace_ai_prod')).rejects.toThrow(/does not match the database in DATABASE_URL/);
+  await expect(operationGuard('bootstrap', 'production', prodUrl, 'workspace_ai_prod', 'surprise_db')).rejects.toThrow(/surprise_db/);
+});
+
+it.each([undefined, 'staging', ''])('refuses bootstrap with APP_ENV %j even with a matching confirmation', async appEnv => {
+  await expect(operationGuard('bootstrap', appEnv, prodUrl, 'workspace_ai_prod', 'workspace_ai_prod')).rejects.toThrow(/APP_ENV/);
+});
+
+it('keeps the development and test rules for bootstrap', async () => {
+  await expect(operationGuard('bootstrap', 'development', prodUrl, 'workspace_ai_prod', 'workspace_ai_prod')).rejects.toThrow(/localhost/);
+  await expect(operationGuard('bootstrap', 'test', prodUrl, 'workspace_ai_prod', 'workspace_ai_prod')).rejects.toThrow(/workspace_ai_test/);
+  await expect(operationGuard('bootstrap', 'test', testUrl, undefined, 'workspace_ai_test')).resolves.toBeUndefined();
 });
 
 it.each([

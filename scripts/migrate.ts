@@ -3,7 +3,7 @@ import path from 'node:path';
 import postgres from 'postgres';
 import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
-import { assertPostgresMigrationAllowed, parseConfirmDatabase } from '../src/lib/environment-guard';
+import { assertPostgresConfirmedOperationAllowed, parseConfirmDatabase } from '../src/lib/environment-guard';
 
 loadEnvConfig(process.cwd());
 
@@ -15,7 +15,7 @@ async function main(): Promise<void> {
   const confirmDatabase = parseConfirmDatabase(process.argv.slice(2));
   const sql = postgres(databaseUrl, { max: 1, onnotice: () => {} });
   try {
-    await assertPostgresMigrationAllowed(sql, databaseUrl, confirmDatabase);
+    await assertPostgresConfirmedOperationAllowed(sql, 'migrate', databaseUrl, confirmDatabase);
     await migrate(drizzle(sql), { migrationsFolder: path.join(process.cwd(), 'db/migrations') });
   } finally {
     await sql.end();
