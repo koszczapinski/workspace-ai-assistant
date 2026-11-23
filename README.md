@@ -46,6 +46,15 @@ Run the assistant against a model on your own machine. No API key or paid call i
 
    Leave `AI_API_KEY` unset. Restart `npm run dev`.
 
+### Trying another model (for example Bielik)
+
+The model is chosen only by `AI_MODEL`, one per running app; there is no model picker in the UI. To try the Polish model [Bielik](https://huggingface.co/speakleash) next to Gemma, download a GGUF build in LM Studio (search "Bielik"; the 11B size in Q4 to Q8 fits in 24 GB), then:
+
+1. Load it with a larger context, as below: `lms load <bielik-id> --context-length 16384`. Find `<bielik-id>` with `lms ls`.
+2. Set `AI_MODEL=<bielik-id>` in `.env.local` and restart `npm run dev`.
+
+To compare two models side by side, run two instances of the app on different ports, each with its own `AI_MODEL`.
+
 ### Context length for long Conversations
 
 LM Studio loads a model with a **4096-token context** by default. A request can carry up to 30 messages of up to 4,000 characters each, plus the Assistant instructions, which is far more than 4096 tokens. With the default context, long Conversations may fail or lose their earlier turns, so load the model with a larger one:
