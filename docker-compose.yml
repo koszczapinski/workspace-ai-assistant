@@ -39,6 +39,27 @@ services:
         condition: service_healthy
     restart: "no"
 
+  # Deployer first-run command, not started by `up` (profile `tools`):
+  #   docker compose run --rm bootstrap --workspace "Acme"
+  # Same image and the same confirmed production path as `migrate`; extra arguments are passed to `npm run bootstrap`.
+  # BETTER_AUTH_URL is what the printed Owner Invitation link is built from.
+  bootstrap:
+    profiles: ["tools"]
+    build:
+      context: .
+      target: migrate
+    environment:
+      APP_ENV: production
+      DATABASE_URL: postgres://${POSTGRES_USER:-workspace_ai}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/${POSTGRES_DB:-workspace_ai}
+      POSTGRES_DB: ${POSTGRES_DB:-workspace_ai}
+      BETTER_AUTH_URL: ${BETTER_AUTH_URL:?Set BETTER_AUTH_URL in .env to the address people open, for example http://localhost:3000}
+    entrypoint: ["sh", "-c", "npm run --silent bootstrap -- --confirm-database \"$$POSTGRES_DB\" \"$$@\"", "sh"]
+    command: []
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: "no"
+
   app:
     build:
       context: .

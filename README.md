@@ -96,23 +96,59 @@ Not part of CI. With the dev server running and the model loaded:
 - [ ] **Cancel on Workspace change:** start a reply, switch Workspace; generation is cancelled and messages, partial output and errors are cleared.
 
 <!-- docker-compose:start -->
-## Run with Docker Compose
+## Deploy it (Deployer walkthrough)
 
-Docker Compose (the app and PostgreSQL) is the one supported way for a Deployer to run an instance. The full Deployer walkthrough is separate; this is the short path.
+You are the Deployer: you run one instance with Docker Compose (the app and PostgreSQL), create the first Workspace and its Owner, and have your first Conversation, streamed from your own AI provider. There is no public demo (ADR-0005). Requirements: Docker with Compose, and either an OpenAI API key or a local OpenAI-compatible server such as LM Studio.
 
 Memory: building the image (`next build`) needs about 4 GiB of RAM available to Docker. With 2 GiB the build is killed (`SIGKILL` during "Running TypeScript"). On Colima, for example, run `colima stop && colima start --memory 4`; on Docker Desktop, raise Memory in Settings → Resources.
 
-1. Copy `.env.compose.example` to `.env` and fill it in. `.env` is git-ignored and never copied into the image.
-   - `POSTGRES_PASSWORD`: URL-safe characters only, for example `openssl rand -hex 24`. `POSTGRES_USER` and `POSTGRES_DB` default to `workspace_ai`.
-   - `BETTER_AUTH_SECRET`: at least 32 random characters. `BETTER_AUTH_URL`: required, the URL people open (it must match `APP_PORT` or your domain, or sign-in and Invitation links break); `APP_PORT` changes the host port.
-   - `AI_PROVIDER` and `AI_MODEL`, plus `AI_API_KEY` (`openai`) or `AI_BASE_URL` (`openai-compatible`). The containers run with `APP_ENV=production`, so `AI_PROVIDER=fake` is refused. From inside a container, `localhost` is the container: reach LM Studio on the host at `http://host.docker.internal:1234/v1`.
-   - Compose stops with a message naming any of `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `AI_PROVIDER` or `AI_MODEL` that is missing.
-2. Start it: `docker compose up --build`. Open `http://localhost:3000/login` (or your `APP_PORT`).
-3. Stop with `docker compose down`. The database lives in the named volume `db-data`, so data survives `down` and `up`; `docker compose down -v` deletes it.
+### 1. Clone and configure
 
-What happens on `up`: PostgreSQL starts and passes its healthcheck, then the one-shot `migrate` service applies `db/migrations`, then the app starts. Because the database host is the container `db`, it is not local, so `migrate` runs the confirmed production path of `docs/adr/0002-explicit-app-env.md`: `APP_ENV=production npm run db:migrate -- --confirm-database "$POSTGRES_DB"`. The name confirmed is the database Compose created, which is also the one in `DATABASE_URL` and the one the connection reports. If the migration fails, the app does not start. The seed is never run and no Demo users exist, so a fresh instance has no accounts yet (the `bootstrap` command of ticket #40 creates the first Workspace and Owner Invitation; it is not part of this change, and the walkthrough is ticket #42). Compose runs with basic Usage limits only; review them before any public exposure.
+```sh
+git clone <your fork> && cd workspace-ai-assistant
+cp .env.compose.example .env
+```
 
-The image (`Dockerfile`) has a `migrate` target (all dependencies, `scripts/`, `src/`, `db/`) and a default `runtime` target (the Next.js standalone server only). It holds no secrets: configuration arrives from `.env` when the containers start.
+`.env` is git-ignored and never copied into the image. Fill it in:
+
+- `POSTGRES_PASSWORD`: URL-safe characters only, for example `openssl rand -hex 24`. `POSTGRES_USER` and `POSTGRES_DB` default to `workspace_ai`.
+- `BETTER_AUTH_SECRET`: at least 32 random characters, for example `openssl rand -hex 32`.
+- `BETTER_AUTH_URL`: the URL people open. It must match `APP_PORT` (default 3000) or your domain, or sign-in and Invitation links break.
+- A real AI provider (the containers run with `APP_ENV=production`, which refuses `AI_PROVIDER=fake`):
+  - OpenAI: `AI_PROVIDER=openai`, `AI_MODEL` (for example `gpt-4o-mini`) and `AI_API_KEY`.
+  - LM Studio or another OpenAI-compatible server: `AI_PROVIDER=openai-compatible`, `AI_MODEL`, and `AI_BASE_URL=http://host.docker.internal:1234/v1` (inside a container `localhost` is the container itself). Load the model with a larger context first; see [Context length](#context-length-for-long-conversations).
+- Compose stops with a message naming any of `POSTGRES_PASSWORD`, `BETTER_AUTH_SECRET`, `BETTER_AUTH_URL`, `AI_PROVIDER` or `AI_MODEL` that is missing. The AI settings themselves are checked on the first chat request, so a mistake there shows up as an error in the chat, not at start-up.
+
+### 2. Start it
+
+```sh
+docker compose up --build
+```
+
+PostgreSQL starts and passes its healthcheck, then the one-shot `migrate` service applies `db/migrations`, then the app starts. Because the database host is the container `db`, it is not local, so `migrate` takes the confirmed production path of `docs/adr/0002-explicit-app-env.md` (`APP_ENV=production npm run db:migrate -- --confirm-database "$POSTGRES_DB"`, with the database Compose created). If the migration fails, the app does not start. The seed never runs and no Demo users exist, so a fresh instance has no accounts yet.
+
+### 3. Create the first Workspace and its Owner Invitation
+
+In a second terminal:
+
+```sh
+docker compose run --rm bootstrap --workspace "Acme"
+```
+
+The `bootstrap` service is not started by `up`; it uses the same image and the same database confirmation as `migrate`. It prints "Created Workspace" and a single-use Owner Invitation link, valid for 7 days, once (only a hash of the token is stored, so copy it now). The link is built from `BETTER_AUTH_URL`. If the 7 days pass first, or you lost the link, run the command again (`--workspace` is optional then): while the Workspace has no Owner it creates nothing and prints a fresh link, and earlier pending bootstrap Invitations are revoked. Once the Workspace has an Owner it refuses and writes nothing. `--workspace` takes 1 to 60 characters.
+
+### 4. Create the Owner and chat
+
+1. Open the link in a browser, enter a name, an email and a password, and select Create account and join. You are the Owner of the Workspace and are signed in.
+2. Start a Conversation and send a message. The reply streams from your provider. If it fails, the chat shows the provider error and Retry stays available; check `AI_*` in `.env` and run `docker compose up -d` to apply a change.
+3. Further Members come from the Invitations screen (Members, then Create invitation link). Sign in later at `<BETTER_AUTH_URL>/login`.
+
+### Operating it
+
+- Stop with `docker compose down`. The database lives in the named volume `db-data`, so data survives `down` and `up`; `docker compose down -v` deletes it.
+- Compose runs with basic Usage limits only (see [Usage limits](#usage-limits)). Review them before any public exposure; this is not production-grade abuse protection.
+- The image (`Dockerfile`) has a `migrate` target (all dependencies, `scripts/`, `src/`, `db/`; used by `migrate` and `bootstrap`) and a default `runtime` target (the Next.js standalone server only). It holds no secrets: configuration arrives from `.env` when the containers start.
+- CI job `compose-smoke` builds this Compose setup with `AI_PROVIDER=fake`, runs `bootstrap`, accepts the Owner Invitation and signs in (`scripts/compose-smoke.sh`). It never chats, because `fake` is refused in production; streamed chat is covered by the Playwright journeys. Run it yourself with `scripts/compose-smoke.sh <env-file>`, an env file with the variables above and `AI_PROVIDER=fake`.
 <!-- docker-compose:end -->
 
 ## Quality checks

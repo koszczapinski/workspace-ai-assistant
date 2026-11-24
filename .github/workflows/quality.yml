@@ -57,3 +57,23 @@ jobs:
             test-results/
           if-no-files-found: ignore
       - run: npm run build
+
+  # Compose is production-only (ADR-0002 refuses AI_PROVIDER=fake with APP_ENV=production at the first chat request,
+  # not at boot), so this job boots with the fake provider, runs bootstrap, accepts the Owner Invitation and signs in.
+  # It never chats: streamed fake chat is covered by the Playwright journeys in `quality`.
+  compose-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Write a job-local env file
+        run: |
+          {
+            echo "POSTGRES_PASSWORD=ci$(openssl rand -hex 16)"
+            echo "BETTER_AUTH_SECRET=ci$(openssl rand -hex 32)"
+            echo "BETTER_AUTH_URL=http://localhost:3000"
+            echo "AI_PROVIDER=fake"
+            echo "AI_MODEL=fake"
+          } > "$RUNNER_TEMP/compose.env"
+      - name: Build, bootstrap, accept the Owner Invitation, sign in
+        run: scripts/compose-smoke.sh "$RUNNER_TEMP/compose.env"

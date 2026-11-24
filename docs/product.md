@@ -30,8 +30,8 @@ It stays a small, finished codebase: one increment at a time, each its own PR wi
 
 Order and status live in `.scratch/roadmap/roadmap.md`. In short:
 
-1. **Configurable AI provider** (issue #29: #32 merged, #33 in review, then #34). One provider per deployment, chosen by environment variables; includes an OpenAI-compatible provider so a local model works.
-2. **Bootstrap and deployment.** A `bootstrap` script creates a Workspace and prints a single-use Owner Invitation link. Docker Compose (app and PostgreSQL) is the one supported deploy path.
+1. **Configurable AI provider** (issue #29, shipped: #32, #33, #34). One provider per deployment, chosen by environment variables; includes an OpenAI-compatible provider so a local model works.
+2. **Bootstrap and deployment.** A `bootstrap` script creates a Workspace and prints a single-use Owner Invitation link. Docker Compose (app and PostgreSQL) is the one supported deploy path; the README walks a Deployer from clone to first Conversation, and a CI job (`compose-smoke`) boots Compose with the fake provider, runs `bootstrap` and accepts the Owner Invitation without chatting (Compose is production-only, which refuses the fake provider).
 3. **RAG** (decisions below).
 4. **Later:** per-Workspace Usage limits; an audit log of Owner actions.
 
