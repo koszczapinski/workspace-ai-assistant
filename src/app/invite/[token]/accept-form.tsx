@@ -46,8 +46,10 @@ export function AcceptForm({ token, workspaceName }: { token: string; workspaceN
       });
       const body = await response.json().catch(() => ({}));
       if (response.status === 201) {
-        if (body.signedIn) router.push(`/w/${body.workspaceId}`);
-        else setNeedsSignIn(true);
+        if (body.signedIn) {
+          router.push(`/w/${body.workspaceId}`);
+          router.refresh();
+        } else setNeedsSignIn(true);
         return;
       }
       if (body.fields) setFields(body.fields);
