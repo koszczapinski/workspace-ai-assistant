@@ -54,7 +54,10 @@ export default function Login() {
               });
 
               if (result.error) setError('Sign-in failed. Check your email and password.');
-              else router.push('/');
+              else {
+                router.push('/');
+                router.refresh();
+              }
             }}
           >
             <label className="block space-y-2 text-sm font-medium" htmlFor="email">

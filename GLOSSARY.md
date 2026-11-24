@@ -37,6 +37,10 @@ _Avoid_: Config, preferences, admin panel
 A Workspace-owned choice of background, font and accent from closed preset lists defined in code. Every Member sees it inside the Workspace; the login page, the Workspace list and the global header keep the brand look. Only an Owner changes it (ADR-0003).
 _Avoid_: Theme, skin
 
+**Account**:
+A User's own page for their Avatar; not Workspace settings.
+_Avoid_: Profile, Settings
+
 **Invitation**:
 A single-use, expiring link that lets one person create an account and join a Workspace. Owners create Member Invitations; the Deployer's `bootstrap` command creates the first Workspace's Owner Invitation (it has no creating User) and, while that Workspace still has no Owner, can re-issue it, which revokes the earlier pending bootstrap Invitations. Further Owners are made by promoting a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
 _Avoid_: Invite code, signup link

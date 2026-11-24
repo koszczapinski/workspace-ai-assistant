@@ -1,4 +1,7 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
+import UserMenu from "@/components/user-menu";
+import { auth } from "@/lib/auth";
 import ThemeToggle from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";
 import "./globals.css";
@@ -8,7 +11,9 @@ export const metadata: Metadata = {
   description: "Private, workspace-scoped AI assistant demo",
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
+  const session = auth ? await auth.api.getSession({ headers: await headers() }) : null;
+
   return (
     <html lang="en" className="dark h-full antialiased">
       <body className="relative min-h-dvh bg-background font-sans text-foreground">
@@ -40,7 +45,10 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
                   <span className="mt-0.5 block text-[0.62rem] font-medium uppercase tracking-[0.2em] text-muted-foreground">Workspace AI</span>
                 </span>
               </div>
-              <ThemeToggle />
+              <div className="flex items-center gap-2">
+                <ThemeToggle />
+                {session && <UserMenu name={session.user.name} email={session.user.email} />}
+              </div>
             </div>
           </header>
           <div className="relative flex-1 min-h-[calc(100dvh-4rem)]">{children}</div>
