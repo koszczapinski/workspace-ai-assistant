@@ -4,8 +4,8 @@ import { db } from './db';
 
 type Database = Parameters<typeof drizzleAdapter>[0];
 
-// Name, image and email are not self-service: /update-user would let a signed-in User
-// bypass validation (name length) and set `image` to an arbitrary string.
+// /update-user would let a signed-in User skip name validation and set `image` to an
+// arbitrary string, so it is disabled.
 export const authOptions = (database: Database) => ({
   database: drizzleAdapter(database, { provider: 'pg' as const }),
   emailAndPassword: { enabled: true, disableSignUp: true },
