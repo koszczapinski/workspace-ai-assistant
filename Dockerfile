@@ -1,4 +1,4 @@
-# Image layout (docs: "Run with Docker Compose" in README.md).
+# Image layout (docs: "Deploy it (Deployer walkthrough)" in README.md).
 #   deps    all dependencies from the lockfile (dev included: tsx and drizzle are needed to migrate)
 #   build   next build with output: 'standalone'
 #   migrate target: full node_modules + scripts/ + src/ + db/migrations; runs `npm run db:migrate`

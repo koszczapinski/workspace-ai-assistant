@@ -1,4 +1,4 @@
-# The one supported deploy path: `docker compose up --build` (README: "Run with Docker Compose").
+# The one supported deploy path: `docker compose up --build` (README: "Deploy it (Deployer walkthrough)").
 # Configuration comes from `.env` (copy .env.compose.example). Nothing secret is baked into the image.
 #
 # Migration runs as a one-shot service with APP_ENV=production and

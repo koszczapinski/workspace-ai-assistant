@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-// Static invariants for the Docker deploy path (docs: README "Run with Docker Compose").
+// Static invariants for the Docker deploy path (docs: README "Deploy it (Deployer walkthrough)").
 // They need no Docker daemon; the real build and `up` are checked by hand.
 const read = (file: string) => readFileSync(path.join(process.cwd(), file), 'utf8');
 const lines = (file: string) => read(file).split('\n').map(line => line.trim()).filter(line => line && !line.startsWith('#'));
