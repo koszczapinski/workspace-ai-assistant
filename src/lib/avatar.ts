@@ -1,4 +1,5 @@
-import { MAX_UPLOAD_BYTES, processAvatar, type AvatarRejection } from './avatar-image';
+import { MAX_INPUT_SIDE, MAX_UPLOAD_BYTES, processAvatar, type AvatarRejection } from './avatar-image';
+import { readBoundedBytes } from './bounded-body';
 
 export type StoredAvatar = { bytes: Uint8Array; updatedAt: Date };
 
@@ -21,42 +22,15 @@ type AvatarDeps = {
 const MAX_BODY_BYTES = MAX_UPLOAD_BYTES + 64 * 1024;
 
 const REJECTION_MESSAGES: Record<AvatarRejection, string> = {
-  'too-large': 'The picture must be at most 2 MB.',
+  'too-large': `The picture must be at most ${MAX_UPLOAD_BYTES / (1024 * 1024)} MB.`,
   'unsupported-format': 'Upload a PNG, JPEG or WebP picture.',
   'not-an-image': 'This file is not a picture we can read.',
-  'too-many-pixels': 'The picture must be at most 4096×4096 pixels.',
+  'too-many-pixels': `The picture must be at most ${MAX_INPUT_SIDE}×${MAX_INPUT_SIDE} pixels.`,
 };
 
 const unauthenticated = () => Response.json({ error: 'Unauthenticated' }, { status: 401 });
 const tooLarge = () => Response.json({ error: REJECTION_MESSAGES['too-large'] }, { status: 413 });
 const badRequest = (error: string) => Response.json({ error }, { status: 400 });
-
-/** Reads at most MAX_BODY_BYTES, so an oversized upload is refused before anything is parsed or decoded. */
-async function readBoundedBody(request: Request): Promise<Uint8Array<ArrayBuffer> | null> {
-  if (Number(request.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) return null;
-  if (!request.body) return new Uint8Array();
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  while (true) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.byteLength;
-    if (size > MAX_BODY_BYTES) {
-      await reader.cancel();
-      return null;
-    }
-    chunks.push(value);
-  }
-  const body = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
-}
 
 async function readUploadedFile(request: Request, body: Uint8Array<ArrayBuffer>): Promise<Blob | null> {
   try {
@@ -75,7 +49,12 @@ export function createAccountAvatarHandlers({ getSession, store }: AvatarDeps) {
       const session = await getSession();
       if (!session) return unauthenticated();
 
-      const body = await readBoundedBody(request);
+      let body: Uint8Array<ArrayBuffer> | null;
+      try {
+        body = await readBoundedBytes(request, MAX_BODY_BYTES);
+      } catch {
+        return badRequest('The upload could not be read. Try again.');
+      }
       if (!body) return tooLarge();
       const file = await readUploadedFile(request, body);
       if (!file) return badRequest('Choose a picture to upload.');

@@ -26,6 +26,8 @@ export async function processAvatar(input: Uint8Array): Promise<AvatarImageResul
 
   try {
     const webp = await sharp(input)
+      // Apply the EXIF orientation first: the metadata that says "this photo is sideways" is dropped below.
+      .autoOrient()
       .resize(AVATAR_SIZE, AVATAR_SIZE, { fit: 'cover', position: 'centre' })
       .webp({ quality: 80 })
       .toBuffer();

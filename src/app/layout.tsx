@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import UserMenu from "@/components/user-menu";
-import { avatarUrl, currentSession } from "@/lib/avatar-session";
+import { avatarUrl } from "@/lib/avatar-url";
+import { currentSession } from "@/lib/session";
 import { avatarStore } from "@/lib/avatar-store";
 import ThemeToggle from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";

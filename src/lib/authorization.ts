@@ -2,6 +2,7 @@ import { headers } from 'next/headers';
 import { auth } from './auth';
 import type { MemberRole } from './member-types';
 import { createOwnerAuthorization } from './owner-authorization';
+import { currentSession } from './session';
 import { authorizedWorkspace, ownedWorkspace } from './workspaces';
 
 export type WorkspaceAccess =
@@ -36,6 +37,6 @@ export async function authorizeWorkspace(workspaceId: string): Promise<MemberAcc
 
 /** Resolves identity from the server session and enforces the Owner role in the Workspace. */
 export const authorizeWorkspaceOwner = createOwnerAuthorization({
-  getSession: async () => (auth ? auth.api.getSession({ headers: await headers() }) : null),
+  getSession: currentSession,
   findOwnedWorkspace: ownedWorkspace,
 });

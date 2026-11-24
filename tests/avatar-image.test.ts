@@ -56,6 +56,30 @@ describe('processAvatar', () => {
     expect(meta.xmp).toBeUndefined();
   });
 
+  it('turns a phone photo upright using its EXIF orientation before dropping the metadata', async () => {
+    // Stored sideways: red on the left, blue on the right. Orientation 6 means "rotate 90° clockwise to view",
+    // so the upright picture has red on top and blue at the bottom.
+    const half = (r: number, b: number) => sharp({ create: { width: 200, height: 200, channels: 3, background: { r, g: 0, b } } }).png().toBuffer();
+    const sideways = await sharp({ create: { width: 400, height: 200, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+      .composite([{ input: await half(255, 0), left: 0, top: 0 }, { input: await half(0, 255), left: 200, top: 0 }])
+      .jpeg()
+      .withMetadata({ orientation: 6 })
+      .toBuffer();
+
+    const result = await processAvatar(sideways);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const { data, info } = await sharp(result.webp).raw().toBuffer({ resolveWithObject: true });
+    const pixel = (x: number, y: number) => data.subarray((y * info.width + x) * info.channels, (y * info.width + x) * info.channels + 3);
+    const [topRed, , topBlue] = pixel(128, 20);
+    const [bottomRed, , bottomBlue] = pixel(128, 235);
+    expect(topRed).toBeGreaterThan(200);
+    expect(topBlue).toBeLessThan(60);
+    expect(bottomBlue).toBeGreaterThan(200);
+    expect(bottomRed).toBeLessThan(60);
+  });
+
   it('rejects bytes that are not an image', async () => {
     expect(await processAvatar(Buffer.from('definitely not a picture'))).toEqual({ ok: false, reason: 'not-an-image' });
   });

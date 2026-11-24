@@ -1,15 +1,12 @@
-import { headers } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { Avatar } from '@/components/avatar';
-import { auth } from '@/lib/auth';
-import { avatarUrl } from '@/lib/avatar-session';
+import { avatarUrl } from '@/lib/avatar-url';
 import { avatarStore } from '@/lib/avatar-store';
+import { currentSession } from '@/lib/session';
 import { AvatarForm } from './avatar-form';
 
 export default async function AccountPage() {
-  if (!auth) redirect('/login');
-
-  const session = await auth.api.getSession({ headers: await headers() });
+  const session = await currentSession();
   if (!session) redirect('/login');
 
   const { id, name, email } = session.user;

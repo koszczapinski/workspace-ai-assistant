@@ -99,6 +99,19 @@ describe('PUT /api/account/avatar', () => {
     expect(h.saved.size).toBe(0);
   });
 
+  it('answers 400 when the upload stream breaks off', async () => {
+    const h = setup();
+    const broken = new ReadableStream<Uint8Array>({ pull(controller) { controller.error(new Error('connection reset')); } });
+    const request = new Request('http://x/api/account/avatar', {
+      method: 'PUT', body: broken, headers: { 'content-type': 'multipart/form-data; boundary=x' }, duplex: 'half',
+    } as RequestInit);
+
+    const res = await h.PUT(request);
+
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'The upload could not be read. Try again.' });
+  });
+
   it('answers 413 at once when Content-Length announces too much', async () => {
     const h = setup();
     const request = new Request('http://x/api/account/avatar', {
