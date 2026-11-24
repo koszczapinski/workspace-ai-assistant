@@ -41,6 +41,10 @@ _Avoid_: Theme, skin
 A User's own page for their Avatar; not Workspace settings.
 _Avoid_: Profile, Settings
 
+**Avatar**:
+The one picture a User uploads on their Account, the same in every Workspace; without one, their initials stand in. The server stores only a re-encoded 256×256 WebP, never the original or a URL, and serves it only to the User themselves (ADR-0007).
+_Avoid_: Profile picture, photo, image URL
+
 **Invitation**:
 A single-use, expiring link that lets one person create an account and join a Workspace. Owners create Member Invitations; the Deployer's `bootstrap` command creates the first Workspace's Owner Invitation (it has no creating User) and, while that Workspace still has no Owner, can re-issue it, which revokes the earlier pending bootstrap Invitations. Further Owners are made by promoting a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
 _Avoid_: Invite code, signup link

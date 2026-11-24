@@ -1,14 +1,16 @@
 import { isValidElement, type ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getSession, redirect } = vi.hoisted(() => ({
+const { getSession, redirect, version } = vi.hoisted(() => ({
   getSession: vi.fn(),
+  version: vi.fn(async (): Promise<Date | null> => null),
   redirect: vi.fn((destination: string): never => { throw new Error(`redirect:${destination}`); }),
 }));
 
 vi.mock('next/navigation', () => ({ redirect }));
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }));
 vi.mock('../src/lib/auth', () => ({ auth: { api: { getSession } } }));
+vi.mock('../src/lib/avatar-store', () => ({ avatarStore: { version } }));
 
 import AccountPage from '../src/app/account/page';
 import RootLayout from '../src/app/layout';
@@ -56,6 +58,13 @@ describe('Header user menu', () => {
   it('is shown with the Session User name and email', async () => {
     getSession.mockResolvedValue(session);
     const tree = await RootLayout({ children: 'content' });
-    expect(findProps(tree, UserMenu)).toEqual({ name: 'Ada Lovelace', email: 'ada@example.com' });
+    expect(findProps(tree, UserMenu)).toEqual({ name: 'Ada Lovelace', email: 'ada@example.com', avatarSrc: null });
+  });
+
+  it("points the menu at the User's versioned Avatar once they have one", async () => {
+    getSession.mockResolvedValue(session);
+    version.mockResolvedValueOnce(new Date(Date.UTC(2026, 10, 24, 12)));
+    const tree = await RootLayout({ children: 'content' });
+    expect(findProps(tree, UserMenu)).toMatchObject({ avatarSrc: '/api/users/user-a/avatar?v=1795521600000' });
   });
 });

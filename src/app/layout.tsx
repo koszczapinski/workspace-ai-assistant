@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import UserMenu from "@/components/user-menu";
-import { auth } from "@/lib/auth";
+import { avatarUrl } from "@/lib/avatar-url";
+import { currentSession } from "@/lib/session";
+import { avatarStore } from "@/lib/avatar-store";
 import ThemeToggle from "@/components/theme-toggle";
 import { BrandLogo } from "@/components/brand-logo";
 import "./globals.css";
@@ -12,7 +13,8 @@ export const metadata: Metadata = {
 };
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  const session = auth ? await auth.api.getSession({ headers: await headers() }) : null;
+  const session = await currentSession();
+  const avatarVersion = session ? await avatarStore.version(session.user.id) : null;
 
   return (
     <html lang="en" className="dark h-full antialiased">
@@ -47,7 +49,13 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
               </div>
               <div className="flex items-center gap-2">
                 <ThemeToggle />
-                {session && <UserMenu name={session.user.name} email={session.user.email} />}
+                {session && (
+                  <UserMenu
+                    name={session.user.name}
+                    email={session.user.email}
+                    avatarSrc={avatarVersion ? avatarUrl(session.user.id, avatarVersion) : null}
+                  />
+                )}
               </div>
             </div>
           </header>

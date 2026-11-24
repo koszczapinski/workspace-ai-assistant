@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Compose smoke test (CI job `compose-smoke`; runnable locally with Docker and an env file).
 # Builds and starts Compose with AI_PROVIDER=fake (AI config is only checked on the first chat request),
-# runs `bootstrap`, accepts the printed Owner Invitation, signs in, and never chats.
+# runs `bootstrap`, accepts the printed Owner Invitation, signs in, uploads an Avatar (which proves `sharp` works in the
+# image), and never chats.
 # Usage: scripts/compose-smoke.sh <env-file>   (the file must set BETTER_AUTH_URL to http://localhost:<APP_PORT>)
 set -euo pipefail
 
@@ -48,4 +49,13 @@ curl -fsS -c "$JAR" -X POST "$BASE/api/auth/sign-in/email" -H 'Content-Type: app
 WS_ID="$(echo "$RESP" | sed -E 's/.*"workspaceId":"([^"]+)".*/\1/')"
 PAGE="$(curl -fsS -b "$JAR" "$BASE/w/$WS_ID")"
 grep -q "Smoke Test" <<< "$PAGE"
+
+# Upload an Avatar: `sharp`'s native binaries must load in the image to re-encode it as a 256x256 WebP.
+PNG="$(mktemp)"
+echo 'iVBORw0KGgoAAAANSUhEUgAAACAAAAAYCAIAAAAUMWhjAAAACXBIWXMAAAPoAAAD6AG1e1JrAAAAMElEQVRIiWM4YSNHU8QwaoHNaBDJjaaiE6MZTW60qDgxWprajFY4J0arTJvB3aoAALcCZi4/K2k4AAAAAElFTkSuQmCC' | base64 -d > "$PNG"
+curl -fsS -b "$JAR" -X PUT "$BASE/api/account/avatar" -H "Origin: $BASE" -F "file=@$PNG;type=image/png" >/dev/null
+USER_ID="$(curl -fsS -b "$JAR" "$BASE/api/auth/get-session" | sed -E 's/.*"user":\{[^}]*"id":"([^"]+)".*/\1/')"
+TYPE="$(curl -fsS -b "$JAR" -o /dev/null -w '%{content_type}' "$BASE/api/users/$USER_ID/avatar")"
+[ "$TYPE" = "image/webp" ] || { echo "Avatar answered $TYPE, expected image/webp" >&2; exit 1; }
+rm -f "$PNG"
 echo "Compose smoke test passed."

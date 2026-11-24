@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 import { Avatar } from '@/components/avatar';
 
-export default function UserMenu({ name, email }: { name: string; email: string }) {
+export default function UserMenu({ name, email, avatarSrc = null }: { name: string; email: string; avatarSrc?: string | null }) {
   const [open, setOpen] = useState(false);
   const root = useRef<HTMLDivElement>(null);
 
@@ -34,7 +34,7 @@ export default function UserMenu({ name, email }: { name: string; email: string 
         onClick={() => setOpen((value) => !value)}
         className="rounded-full outline-none focus-visible:ring-3 focus-visible:ring-ring/50"
       >
-        <Avatar name={name} />
+        <Avatar name={name} src={avatarSrc} />
       </button>
       {open && (
         <div className="absolute right-0 top-full z-20 mt-2 w-64 rounded-xl border border-border bg-card p-3 text-sm shadow-lg">
