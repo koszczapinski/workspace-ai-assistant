@@ -1,8 +1,11 @@
 export const dynamic = "force-dynamic";
 import Link from 'next/link';
 import { redirect, notFound } from 'next/navigation';
-import { ArrowLeft, ShieldCheck, User } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { authorizeWorkspaceOwner } from '@/lib/authorization';
+import { Avatar } from '@/components/avatar';
+import { avatarStore } from '@/lib/avatar-store';
+import { avatarSrc } from '@/lib/avatar-url';
 import { invitationStore } from '@/lib/invitation-store';
 import type { MemberRole } from '@/lib/member-types';
 import { listMembers } from '@/lib/workspaces';
@@ -18,6 +21,7 @@ export default async function Members({ params }: { params: Promise<{ workspaceI
   if (access.kind === 'forbidden') notFound();
 
   const members = await listMembers(access.workspace.id);
+  const avatarVersions = await Promise.all(members.map(member => avatarStore.version(member.userId)));
   const pending = await invitationStore.listPending(access.workspace.id, new Date());
   const ownerCount = members.filter(member => member.role === 'owner').length;
 
@@ -35,11 +39,13 @@ export default async function Members({ params }: { params: Promise<{ workspaceI
         </p>
         <hr className="gradient-divider my-7" />
         <ul className="grid gap-3" aria-label="Workspace members">
-          {members.map(member => (
+          {members.map((member, index) => (
             <li key={member.userId} className="workspace-card flex-wrap">
-              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border bg-muted text-foreground">
-                {member.role === 'owner' ? <ShieldCheck aria-hidden="true" className="size-5" /> : <User aria-hidden="true" className="size-5" />}
-              </span>
+              <Avatar
+                name={member.name}
+                src={avatarSrc(member.userId, avatarVersions[index])}
+                className="size-11 text-sm"
+              />
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium tracking-tight">{member.name}</span>
                 <span className="mt-1 block truncate text-xs text-muted-foreground">{member.email}</span>

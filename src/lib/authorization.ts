@@ -3,7 +3,7 @@ import { auth } from './auth';
 import type { MemberRole } from './member-types';
 import { createOwnerAuthorization } from './owner-authorization';
 import { currentSession } from './session';
-import { authorizedWorkspace, ownedWorkspace } from './workspaces';
+import { authorizedWorkspace, isOwnerOfMember as storedIsOwnerOfMember, ownedWorkspace } from './workspaces';
 
 export type WorkspaceAccess =
   | { kind: 'unavailable' }
@@ -40,3 +40,9 @@ export const authorizeWorkspaceOwner = createOwnerAuthorization({
   getSession: currentSession,
   findOwnedWorkspace: ownedWorkspace,
 });
+
+/**
+ * Whether `ownerId` may see `memberId`'s Avatar: they are an Owner of a Workspace where `memberId` has a Membership.
+ * Read from stored Memberships on every call, so removing the Membership ends access at once.
+ */
+export const isOwnerOfMember = (ownerId: string, memberId: string) => storedIsOwnerOfMember(ownerId, memberId);

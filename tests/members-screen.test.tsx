@@ -3,7 +3,8 @@ import { cleanup, render, screen, within } from '@testing-library/react';
 import '@testing-library/jest-dom/vitest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { authorizeWorkspaceOwner, listMembers, listPending, redirect, notFound } = vi.hoisted(() => ({
+const { authorizeWorkspaceOwner, listMembers, listPending, avatarVersion, redirect, notFound } = vi.hoisted(() => ({
+  avatarVersion: vi.fn(),
   authorizeWorkspaceOwner: vi.fn(),
   listMembers: vi.fn(),
   listPending: vi.fn(),
@@ -14,6 +15,7 @@ const { authorizeWorkspaceOwner, listMembers, listPending, redirect, notFound } 
 vi.mock('next/navigation', () => ({ redirect, notFound, useRouter: () => ({ refresh: vi.fn(), push: vi.fn() }) }));
 vi.mock('../src/lib/authorization', () => ({ authorizeWorkspaceOwner }));
 vi.mock('../src/lib/workspaces', () => ({ listMembers }));
+vi.mock('../src/lib/avatar-store', () => ({ avatarStore: { version: avatarVersion } }));
 vi.mock('../src/lib/invitation-store', () => ({ invitationStore: { listPending } }));
 
 import MembersPage from '../src/app/w/[workspaceId]/members/page';
@@ -29,6 +31,8 @@ describe('members screen', () => {
     listMembers.mockReset();
     listPending.mockReset();
     listPending.mockResolvedValue([]);
+    avatarVersion.mockReset();
+    avatarVersion.mockResolvedValue(null);
     redirect.mockClear();
     notFound.mockClear();
   });
@@ -52,6 +56,24 @@ describe('members screen', () => {
     expect(within(rows[1]!).getByText('bo@example.test')).toBeVisible();
     expect(within(rows[1]!).getByText('Member')).toBeVisible();
     expect(screen.getByRole('link', { name: /Back to Northstar Studio/ })).toHaveAttribute('href', '/w/workspace-a');
+  });
+
+  it("shows each Member's Avatar picture or initials next to the role badge", async () => {
+    authorizeWorkspaceOwner.mockResolvedValue({ kind: 'owner', userId: 'u1', workspace: { id: 'workspace-a', name: 'Northstar Studio' } });
+    listMembers.mockResolvedValue([
+      { userId: 'u1', name: 'Ada Owner', email: 'ada@example.test', role: 'owner' },
+      { userId: 'u2', name: 'Bo Member', email: 'bo@example.test', role: 'member' },
+    ]);
+    avatarVersion.mockImplementation(async (userId: string) => (userId === 'u2' ? new Date(1700000000000) : null));
+
+    render(await MembersPage(params('workspace-a')));
+
+    const rows = within(screen.getByRole('list', { name: 'Workspace members' })).getAllByRole('listitem');
+    expect(within(rows[0]!).getByTestId('avatar')).toHaveTextContent('AO');
+    expect(within(rows[0]!).queryByRole('img', { hidden: true })).toBeNull();
+    expect(within(rows[1]!).getByTestId('avatar').querySelector('img')).toHaveAttribute('src', '/api/users/u2/avatar?v=1700000000000');
+    expect(within(rows[0]!).getByText('Owner')).toBeVisible();
+    expect(within(rows[1]!).getByText('Member')).toBeVisible();
   });
 
   it('shows an Owner the pending Invitations of the Workspace and a create action', async () => {

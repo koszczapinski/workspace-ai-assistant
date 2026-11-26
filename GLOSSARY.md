@@ -42,7 +42,7 @@ A User's own page for their Avatar; not Workspace settings.
 _Avoid_: Profile, Settings
 
 **Avatar**:
-The one picture a User uploads on their Account, the same in every Workspace; without one, their initials stand in. The server stores only a re-encoded 256×256 WebP, never the original or a URL, and serves it only to the User themselves (ADR-0007).
+The one picture a User uploads on their Account, the same in every Workspace; without one, their initials stand in. The server stores only a re-encoded 256×256 WebP, never the original or a URL, and serves it only to the User themselves and to Owners of a Workspace they have a Membership in, for as long as that Membership lasts (ADR-0007).
 _Avoid_: Profile picture, photo, image URL
 
 **Invitation**:
