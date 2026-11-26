@@ -69,4 +69,22 @@ describe('Docker deploy files', () => {
     }
     expect(template).not.toContain('AI_PROVIDER=fake');
   });
+
+  it('checks the app through /api/health from inside the container', () => {
+    const service = compose.slice(compose.indexOf('\n  app:'), compose.indexOf('\nvolumes:'));
+    expect(service).toContain('healthcheck:');
+    expect(service).toContain('/api/health');
+    expect(service).toMatch(/start_period:/);
+  });
+
+  it('bounds the logs of every service by size and file count', () => {
+    const services = compose.slice(compose.indexOf('\nservices:'), compose.indexOf('\nvolumes:')).split(/\n  (?=[a-z]+:\n)/).slice(1);
+    expect(services).toHaveLength(4);
+    for (const service of services) {
+      expect(service).toContain('logging: *default-logging');
+    }
+    const shared = compose.slice(compose.indexOf('x-logging:'), compose.indexOf('\nservices:'));
+    expect(shared).toMatch(/max-size: "\d+m"/);
+    expect(shared).toMatch(/max-file: "\d+"/);
+  });
 });

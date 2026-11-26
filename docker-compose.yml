@@ -8,8 +8,16 @@
 
 name: workspace-ai-assistant
 
+# Bounded container logs (json-file driver): at most 5 files of 10 MB per service, so logs cannot fill the disk.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   db:
+    logging: *default-logging
     image: postgres:16
     restart: unless-stopped
     environment:
@@ -25,6 +33,7 @@ services:
       retries: 10
 
   migrate:
+    logging: *default-logging
     build:
       context: .
       target: migrate
@@ -44,6 +53,7 @@ services:
   # Same image and the same confirmed production path as `migrate`; extra arguments are passed to `npm run bootstrap`.
   # BETTER_AUTH_URL is what the printed Owner Invitation link is built from.
   bootstrap:
+    logging: *default-logging
     profiles: ["tools"]
     build:
       context: .
@@ -61,6 +71,7 @@ services:
     restart: "no"
 
   app:
+    logging: *default-logging
     build:
       context: .
       target: runtime
@@ -81,6 +92,14 @@ services:
     depends_on:
       migrate:
         condition: service_completed_successfully
+    # Shallow liveness (no database ping), so a short database outage does not mark the app unhealthy.
+    # Uses node because the runtime image has no curl.
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r => process.exit(r.ok ? 0 : 1), () => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
 
 volumes:
   db-data:
