@@ -11,6 +11,8 @@ type RelayInput = {
   conversationId: string;
   /** Stores the turn; rejects when nothing was stored. */
   save: (reply: AssistantReply) => Promise<void>;
+  /** Called when `save` rejects. Receives the error only so it can be classified; never log its message. */
+  onSaveFailed: (error: unknown) => void;
 };
 
 /**
@@ -20,7 +22,7 @@ type RelayInput = {
  * was not stored. The reply is consumed to its end even after the client disconnects, so an aborted
  * reply that already has text is still stored, as Stopped.
  */
-export function relayConversationReply({ reply, conversationId, save }: RelayInput): Response {
+export function relayConversationReply({ reply, conversationId, save, onSaveFailed }: RelayInput): Response {
   const stream = createUIMessageStream({
     execute: async ({ writer }) => {
       let text = '';
@@ -47,9 +49,8 @@ export function relayConversationReply({ reply, conversationId, save }: RelayInp
           await save({ text, stopped: aborted || !finish });
           const messageMetadata: ChatMessageMetadata = { conversationId };
           writer.write({ type: 'message-metadata', messageMetadata });
-        } catch {
-          // Never log message content.
-          console.error('Failed to save a Conversation turn');
+        } catch (error) {
+          onSaveFailed(error);
         }
       }
       if (finish) writer.write(finish);

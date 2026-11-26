@@ -167,6 +167,24 @@ Unit and route tests use controlled streams and fake adapters, so they require n
 
 CI runs these checks on pull requests and pushes to `main`. Its PostgreSQL 16 service uses a fresh `workspace_ai_test` database. Demo passwords and the Better Auth secret in CI are synthetic job-local values. CI and Playwright run with `AI_PROVIDER=fake`, which is allowed only when `APP_ENV` is `development` or `test` (in `production` or with no `APP_ENV` it is a configuration error); `AI_FAKE_DELAY_MS` controls its pause before each response chunk (default `120` ms). CI supplies no AI key or production credentials.
 
+## Logs
+
+The app writes structured JSON logs, one line per event, to stdout. A Deployer reads them with `docker compose logs app`. Only `src/lib/logger.ts` writes logs. Today the chat route (`/api/chat`) logs a line for each failure it turns into an error response, for a failed save of a Conversation turn, and for an AI provider failure. The responses to the client do not change.
+
+Each line carries only these fields:
+
+| Field | Meaning |
+|---|---|
+| `level`, `time` | Severity (pino number, `50` = error) and ISO timestamp |
+| `event` | `chat.body_unreadable`, `chat.body_malformed`, `chat.history_failed`, `chat.limiter_failed`, `chat.stream_setup_failed`, `chat.save_failed`, `provider.stream_failed` |
+| `route`, `status` | The route, and the HTTP status returned (absent when the failure happens after the response started) |
+| `requestId` | A fresh id per request, to tie lines of one request together |
+| `errorClass` | The class name of the error, such as `TypeError` |
+| `pgCode` | The Postgres error code (for example `23505`), when the error or its cause has one |
+| `userId`, `workspaceId`, `conversationId` | IDs, when known |
+
+`conversationId` is logged only when it is a well-formed UUID, because the client chooses the id it asks for. Never logged, by design: message text, Assistant instructions, the `message` of any error (a Drizzle query error's message contains the SQL and its bound parameters, so it would leak the Conversation), request bodies, headers, cookies, and secrets. The logger accepts only the fields above, and tests feed a sentinel string through the failure paths and assert it appears in no line.
+
 ## Usage limits
 
 The chat endpoint enforces two server-side Usage limits so one User or Workspace cannot run up unbounded provider cost:
