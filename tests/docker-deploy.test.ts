@@ -78,7 +78,7 @@ describe('Docker deploy files', () => {
   });
 
   it('bounds the logs of every service by size and file count', () => {
-    const services = compose.slice(compose.indexOf('\nservices:'), compose.indexOf('\nvolumes:')).split(/\n  (?=[a-z]+:\n)/).slice(1);
+    const services = compose.slice(compose.indexOf('\nservices:'), compose.indexOf('\nvolumes:')).split(/\n  (?=[a-z0-9-]+:\n)/).slice(1);
     expect(services).toHaveLength(4);
     for (const service of services) {
       expect(service).toContain('logging: *default-logging');

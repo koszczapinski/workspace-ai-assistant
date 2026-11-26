@@ -14,11 +14,11 @@ describe('GET /api/health', () => {
 
   it('is shallow: it does not load the database or the Session', async () => {
     vi.resetModules();
-    const db = vi.fn();
-    vi.doMock('@/lib/session', () => { db(); return {}; });
-    vi.doMock('@/lib/db', () => { db(); return {}; });
+    const loaded = vi.fn();
+    vi.doMock('@/lib/session', () => { loaded(); return {}; });
+    vi.doMock('@/lib/db', () => { loaded(); return {}; });
     const { GET: fresh } = await import('@/app/api/health/route');
     expect((await fresh()).status).toBe(200);
-    expect(db).not.toHaveBeenCalled();
+    expect(loaded).not.toHaveBeenCalled();
   });
 });
