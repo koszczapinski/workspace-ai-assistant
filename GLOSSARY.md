@@ -46,11 +46,11 @@ The one picture a User uploads on their Account, the same in every Workspace; wi
 _Avoid_: Profile picture, photo, image URL
 
 **Invitation**:
-A single-use, expiring link that lets one person create an account and join a Workspace. Owners create Member Invitations; the Deployer's `bootstrap` command creates the first Workspace's Owner Invitation (it has no creating User) and, while that Workspace still has no Owner, can re-issue it, which revokes the earlier pending bootstrap Invitations. Further Owners are made by promoting a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
+A single-use, expiring link that lets one person create an account and join a Workspace. Owners create Member Invitations; the Deployer's `bootstrap` command creates the Owner Invitation of any Workspace it creates (it has no creating User) and, while that Workspace still has no Owner, can re-issue it by name, which revokes that Workspace's earlier pending bootstrap Invitations. Further Owners are made by promoting a Member. It is valid for 7 days, is not tied to an email address, and exists as pending, accepted, revoked or expired. The link is shown once at creation; only a hash of its token is stored.
 _Avoid_: Invite code, signup link
 
 **Deployer**:
-The person who runs one instance of the application and sets its environment, including the AI provider. It is not a role inside the application: Owner and Member are roles in a Workspace. Users never choose the provider.
+The person who runs one instance of the application, sets its environment, including the AI provider, and creates its Workspaces with the `bootstrap` command. It is not a role inside the application: Owner and Member are roles in a Workspace. Users never choose the provider.
 _Avoid_: Admin, operator
 
 **Demo user**:

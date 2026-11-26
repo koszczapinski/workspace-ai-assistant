@@ -7,9 +7,9 @@ import { assertPostgresConfirmedOperationAllowed } from '../src/lib/environment-
 loadEnvConfig(process.cwd());
 
 /**
- * Deployer's first-run command: creates the first Workspace, or re-issues the Owner Invitation of the one Workspace that
- * still has no Owner, and prints the single-use Owner Invitation link once. Runs only after the environment guard
- * (the same confirmation as migrate); refuses once an Owner exists.
+ * Deployer's command: creates a Workspace by name, or re-issues the Owner Invitation of a Workspace that still has no
+ * Owner (by name, or without a name when exactly one waits), and prints the single-use Owner Invitation link once. Runs
+ * only after the environment guard (the same confirmation as migrate); refuses a Workspace that already has an Owner.
  */
 async function main(): Promise<void> {
   const databaseUrl = process.env.DATABASE_URL;
