@@ -17,7 +17,7 @@ describe('parseBootstrapArgs', () => {
     expect(parseBootstrapArgs(['--', '--workspace', '  Acme  '])).toEqual({ workspaceName: 'Acme', confirmDatabase: undefined });
   });
 
-  it('leaves the name undefined when the flag is absent (only needed when no Workspace exists yet)', () => {
+  it('leaves the name undefined when the flag is absent (a name is then needed only to create a Workspace or to pick one of several)', () => {
     expect(parseBootstrapArgs([])).toEqual({ workspaceName: undefined, confirmDatabase: undefined });
     expect(parseBootstrapArgs(['--confirm-database', 'prod'])).toEqual({ workspaceName: undefined, confirmDatabase: 'prod' });
   });
@@ -57,6 +57,7 @@ const deps = { now: () => NOW, newId: () => 'workspace-1', generateToken: () => 
 const base = 'https://app.example.com';
 const expires = new Date(NOW.getTime() + 7 * 24 * 60 * 60 * 1000);
 const ownerless: ExistingWorkspace = { id: 'ws-existing', name: 'Acme', hasOwner: false };
+const owned: ExistingWorkspace = { id: 'ws-main', name: 'Main', hasOwner: true };
 
 describe('bootstrapWorkspace', () => {
   it('with no Workspace, creates it with default Assistant instructions and an Owner Invitation, returning the link', async () => {
@@ -91,28 +92,55 @@ describe('bootstrapWorkspace', () => {
     expect(result).toEqual({ kind: 'reissued', workspaceId: 'ws-existing', workspaceName: 'Acme', link: 'https://app.example.com/invite/tok-123', expiresAt: expires });
   });
 
-  it('re-issues when --workspace equals the existing name', async () => {
-    const { store } = fakeStore([ownerless]);
-    await expect(bootstrapWorkspace({ store, workspaceName: 'Acme', publicBaseUrl: base, ...deps })).resolves.toMatchObject({ kind: 'reissued' });
+  it('re-issues by name when the matching Workspace has no Owner, revoking only that Workspace', async () => {
+    const { store, calls, workspaces, revoked } = fakeStore([owned, ownerless]);
+    await expect(bootstrapWorkspace({ store, workspaceName: 'Acme', publicBaseUrl: base, ...deps })).resolves.toMatchObject({ kind: 'reissued', workspaceId: 'ws-existing', workspaceName: 'Acme' });
+    expect(calls).toEqual(['lock', 'revoke', 'createInvitation']);
+    expect(workspaces).toEqual([]);
+    expect(revoked).toEqual(['ws-existing']);
   });
 
-  it('refuses a --workspace that differs from the existing name, writing nothing and renaming nothing', async () => {
-    const { store, calls } = fakeStore([ownerless]);
-    await expect(bootstrapWorkspace({ store, workspaceName: 'Other', publicBaseUrl: base, ...deps }))
-      .rejects.toThrow(/"Acme".*"Other"|"Other".*"Acme"/);
+  it('creates a new Workspace on a new name even when others exist, keeping the name as given', async () => {
+    const { store, calls, workspaces, revoked } = fakeStore([owned, ownerless]);
+    const result = await bootstrapWorkspace({ store, workspaceName: 'Beta', publicBaseUrl: base, ...deps });
+    expect(result).toMatchObject({ kind: 'created', workspaceId: 'workspace-1', workspaceName: 'Beta' });
+    expect(calls).toEqual(['lock', 'insertWorkspace', 'createInvitation']);
+    expect(workspaces).toEqual([{ id: 'workspace-1', name: 'Beta', assistantInstructions: DEFAULT_ASSISTANT_INSTRUCTIONS }]);
+    expect(revoked).toEqual([]);
+  });
+
+  it('matches names ignoring case and surrounding spaces', async () => {
+    const { store } = fakeStore([owned, ownerless]);
+    await expect(bootstrapWorkspace({ store, workspaceName: 'aCME', publicBaseUrl: base, ...deps })).resolves.toMatchObject({ kind: 'reissued', workspaceId: 'ws-existing', workspaceName: 'Acme' });
+    const padded = fakeStore([{ id: 'ws-p', name: '  Beta ', hasOwner: false }]);
+    await expect(bootstrapWorkspace({ store: padded.store, workspaceName: 'beta', publicBaseUrl: base, ...deps })).resolves.toMatchObject({ kind: 'reissued', workspaceId: 'ws-p' });
+  });
+
+  it('refuses a name whose Workspace already has an Owner, writing nothing', async () => {
+    const { store, calls } = fakeStore([owned, ownerless]);
+    await expect(bootstrapWorkspace({ store, workspaceName: ' main ', publicBaseUrl: base, ...deps })).rejects.toThrow(/"Main".*already has an Owner/);
     expect(calls).toEqual(['lock']);
   });
 
-  it('refuses when the Workspace already has an Owner, writing nothing', async () => {
-    const { store, calls } = fakeStore([{ ...ownerless, hasOwner: true }]);
-    await expect(bootstrapWorkspace({ store, workspaceName: undefined, publicBaseUrl: base, ...deps }))
-      .rejects.toThrow(/already has an Owner; create further Invitations from the members screen/);
+  it('refuses when two Workspaces carry the matching name, writing nothing', async () => {
+    const { store, calls } = fakeStore([owned, { id: 'a', name: 'Beta', hasOwner: false }, { id: 'b', name: 'beta', hasOwner: true }]);
+    await expect(bootstrapWorkspace({ store, workspaceName: 'BETA', publicBaseUrl: base, ...deps })).rejects.toThrow(/two Workspaces are named/);
     expect(calls).toEqual(['lock']);
   });
 
-  it('refuses when more than one Workspace exists, writing nothing', async () => {
-    const { store, calls } = fakeStore([ownerless, { id: 'ws-2', name: 'Two', hasOwner: false }]);
-    await expect(bootstrapWorkspace({ store, workspaceName: undefined, publicBaseUrl: base, ...deps })).rejects.toThrow(/more than one Workspace/);
+  it('without a name, re-issues when exactly one Workspace has no Owner', async () => {
+    const { store, calls, revoked } = fakeStore([owned, ownerless]);
+    await expect(bootstrapWorkspace({ store, workspaceName: undefined, publicBaseUrl: base, ...deps })).resolves.toMatchObject({ kind: 'reissued', workspaceId: 'ws-existing' });
+    expect(calls).toEqual(['lock', 'revoke', 'createInvitation']);
+    expect(revoked).toEqual(['ws-existing']);
+  });
+
+  it.each([
+    ['all have an Owner', [owned]],
+    ['several have no Owner', [ownerless, { id: 'ws-2', name: 'Two', hasOwner: false }]],
+  ])('without a name, refuses and asks for --workspace when %s, writing nothing', async (_label, existing) => {
+    const { store, calls } = fakeStore(existing);
+    await expect(bootstrapWorkspace({ store, workspaceName: undefined, publicBaseUrl: base, ...deps })).rejects.toThrow(/--workspace/);
     expect(calls).toEqual(['lock']);
   });
 

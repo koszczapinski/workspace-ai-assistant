@@ -52,11 +52,12 @@ export type BootstrapResult = {
 };
 
 /**
- * First-run command, all in one transaction under a table lock (concurrent runs queue and see each other's result):
- * - no Workspace: creates it (`workspaceName` required) and issues its Owner Invitation;
- * - exactly one Workspace without an Owner: creates nothing, revokes the earlier pending bootstrap Invitations and issues
- *   a fresh Owner Invitation (`workspaceName`, if given, must equal the existing name);
- * - otherwise (an Owner exists, or several Workspaces): refuses before writing.
+ * Deployer's create-or-re-issue command, all in one transaction under a table lock (concurrent runs queue and see each
+ * other's result). Names match after trimming, ignoring case.
+ * - with a name and no match: creates that Workspace and issues its Owner Invitation;
+ * - with a name and one match without an Owner: revokes that Workspace's pending bootstrap Invitations and issues a fresh one;
+ * - with a name and one match with an Owner, or two or more matches: refuses before writing;
+ * - without a name: re-issues when exactly one Workspace has no Owner, otherwise refuses and asks for a name.
  * The link is built from the app's public base URL (BETTER_AUTH_URL) and is returned to the caller only; the database
  * holds just the token hash.
  */
@@ -79,24 +80,32 @@ export async function bootstrapWorkspace({
       return { link: `${origin}/invite/${token}`, expiresAt };
     };
 
-    if (existing.length === 0) {
-      if (workspaceName === undefined) throw new Error('--workspace needs a Workspace name, for example --workspace "Acme"');
-      const workspaceId = newId();
-      await tx.insertWorkspace({ id: workspaceId, name: workspaceName, assistantInstructions: DEFAULT_ASSISTANT_INSTRUCTIONS });
-      return { kind: 'created', workspaceId, workspaceName, ...(await issue(workspaceId)) };
+    const reissue = async (workspace: { id: string; name: string }): Promise<BootstrapResult> => {
+      await tx.revokePendingBootstrapInvitations(workspace.id);
+      return { kind: 'reissued', workspaceId: workspace.id, workspaceName: workspace.name, ...(await issue(workspace.id)) };
+    };
+
+    if (workspaceName === undefined) {
+      const ownerless = existing.filter(w => !w.hasOwner);
+      if (ownerless.length === 1) return reissue(ownerless[0]);
+      throw new Error(`Refusing to bootstrap: ${ownerless.length === 0 ? 'no Workspace is waiting for an Owner' : 'several Workspaces have no Owner'}. Pass --workspace "<name>" to create a Workspace or re-issue one by name.`);
     }
-    if (existing.length > 1) {
-      throw new Error('Refusing to bootstrap: more than one Workspace exists. Create further Invitations from the members screen of the Workspace.');
+
+    const wanted = normalizeName(workspaceName);
+    const matches = existing.filter(w => normalizeName(w.name) === wanted);
+    if (matches.length > 1) {
+      throw new Error(`Refusing to bootstrap: two Workspaces are named "${workspaceName}" (ignoring case and surrounding spaces). Nothing was written.`);
     }
-    const [workspace] = existing;
-    if (workspace.hasOwner) {
-      throw new Error('Refusing to bootstrap: the Workspace already has an Owner; create further Invitations from the members screen.');
+    if (matches.length === 1) {
+      const [match] = matches;
+      if (match.hasOwner) {
+        throw new Error(`Refusing to bootstrap: Workspace "${match.name}" already has an Owner; create further Invitations from its members screen. Nothing was written.`);
+      }
+      return reissue(match);
     }
-    if (workspaceName !== undefined && workspaceName !== workspace.name) {
-      throw new Error(`Refusing to bootstrap: the existing Workspace is named "${workspace.name}", not "${workspaceName}". Omit --workspace or pass the existing name; nothing was renamed.`);
-    }
-    await tx.revokePendingBootstrapInvitations(workspace.id);
-    return { kind: 'reissued', workspaceId: workspace.id, workspaceName: workspace.name, ...(await issue(workspace.id)) };
+    const workspaceId = newId();
+    await tx.insertWorkspace({ id: workspaceId, name: workspaceName, assistantInstructions: DEFAULT_ASSISTANT_INSTRUCTIONS });
+    return { kind: 'created', workspaceId, workspaceName, ...(await issue(workspaceId)) };
   });
 }
 
@@ -107,4 +116,8 @@ function publicOrigin(value: string | undefined): string {
   try { url = new URL(value); } catch { throw fail(); }
   if (url.protocol !== 'http:' && url.protocol !== 'https:') throw fail();
   return url.origin;
+}
+
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase();
 }

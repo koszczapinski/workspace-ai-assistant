@@ -116,12 +116,12 @@ describe.skipIf(!testDatabaseUrl)('npm run bootstrap against an isolated test sc
     expect(again.status).toBe(404);
   });
 
-  it('refuses once the Workspace has an Owner, and creates nothing more (no Workspace, no Invitation)', async () => {
+  it('refuses the name of a Workspace that has an Owner (any case, padded), and creates nothing more (no Workspace, no Invitation)', async () => {
     const before = await connection!`SELECT (SELECT count(*) FROM workspaces)::int AS w, (SELECT count(*) FROM invitations)::int AS i`;
     expect(before[0]!.w).toBe(1);
-    const result = runBootstrap(['--workspace', 'Second'], scriptEnv());
+    const result = runBootstrap(['--workspace', ' acme LTD '], scriptEnv());
     expect(result.status).toBe(1);
-    expect(result.err).toMatch(/already has an Owner; create further Invitations from the members screen/);
+    expect(result.err).toMatch(/"Acme Ltd" already has an Owner; create further Invitations from its members screen/);
     expect(linkOf(result.out)).toBeUndefined();
     const after = await connection!`SELECT (SELECT count(*) FROM workspaces)::int AS w, (SELECT count(*) FROM invitations)::int AS i`;
     expect(after[0]).toEqual(before[0]);
@@ -193,21 +193,14 @@ describe.skipIf(!testDatabaseUrl)('npm run bootstrap on a Workspace without an O
     expect(membership!.role).toBe('owner');
   });
 
-  it('a --workspace with the existing name re-issues; a different name refuses and changes nothing', async () => {
+  it('a --workspace with the existing name (any case, padded) re-issues without renaming', async () => {
     expect(runBootstrap(['--workspace', 'Acme'], scriptEnv()).status).toBe(0);
     const before = await counts();
-
-    const same = runBootstrap(['--workspace', 'Acme'], scriptEnv());
+    const same = runBootstrap(['--workspace', '  aCME '], scriptEnv());
     expect(same.status, same.err).toBe(0);
-    expect(same.out).toMatch(/Re-issued/);
-
-    const afterSame = await counts();
-    const different = runBootstrap(['--workspace', 'Renamed'], scriptEnv());
-    expect(different.status).toBe(1);
-    expect(different.err).toMatch(/Acme/);
-    expect(linkOf(different.out)).toBeUndefined();
-    expect(await counts()).toEqual(afterSame);
-    expect(afterSame.i).toBe(before.i + 1);
+    expect(same.out).toMatch(/Re-issued the Owner Invitation for Workspace "Acme"/);
+    const after = await counts();
+    expect(after).toEqual({ ...before, i: before.i + 1 });
     await expect(connection!`SELECT name FROM workspaces`).resolves.toEqual([{ name: 'Acme' }]);
   });
 
@@ -226,13 +219,16 @@ describe.skipIf(!testDatabaseUrl)('npm run bootstrap on a Workspace without an O
     expect(member!.status).toBe('pending');
   });
 
-  it('refuses when more than one Workspace exists, writing nothing', async () => {
-    await connection!`INSERT INTO workspaces (id, name, assistant_instructions) VALUES ('w1', 'One', 'x'), ('w2', 'Two', 'x')`;
-    const result = runBootstrap([], scriptEnv());
-    expect(result.status).toBe(1);
-    expect(result.err).toMatch(/more than one Workspace/);
-    expect(linkOf(result.out)).toBeUndefined();
-    expect(await counts()).toEqual({ w: 2, i: 0, m: 0 });
+  it('without --workspace refuses when several Workspaces have no Owner, and refuses two matching names, writing nothing', async () => {
+    await connection!`INSERT INTO workspaces (id, name, assistant_instructions) VALUES ('w1', 'One', 'x'), ('w2', 'Two', 'x'), ('w3', ' one', 'x')`;
+    const bare = runBootstrap([], scriptEnv());
+    expect(bare.status).toBe(1);
+    expect(bare.err).toMatch(/--workspace/);
+    const dup = runBootstrap(['--workspace', 'ONE'], scriptEnv());
+    expect(dup.status).toBe(1);
+    expect(dup.err).toMatch(/two Workspaces are named/);
+    expect(linkOf(bare.out) ?? linkOf(dup.out)).toBeUndefined();
+    expect(await counts()).toEqual({ w: 3, i: 0, m: 0 });
   });
 
   it('refuses an empty database without --workspace, and production without confirmation writes nothing even with a Workspace present', async () => {
@@ -247,5 +243,66 @@ describe.skipIf(!testDatabaseUrl)('npm run bootstrap on a Workspace without an O
     expect(prod.err).toMatch(/--confirm-database workspace_ai_test/);
     expect(await counts()).toEqual(before);
     expect(await statuses()).toEqual(['pending']);
+  });
+});
+
+describe.skipIf(!testDatabaseUrl)('npm run bootstrap creating a second Workspace', () => {
+  const acceptAs = (token: string, email: string) => createAcceptInvitationHandler({
+    store: createInvitationStore(drizzle(connection!, { schema })), hashPassword, signIn: async () => null,
+  })(new Request('http://localhost/api/invitations/accept', {
+    method: 'POST', body: JSON.stringify({ token, name: 'Person', email, password: 'a-long-test-password' }),
+  }));
+  const tokenOf = (link: string) => link.split('/invite/')[1]!;
+  const snapshot = async (workspaceId: string) => ({
+    memberships: await connection!`SELECT id, user_id, role FROM memberships WHERE workspace_id = ${workspaceId} ORDER BY id`,
+    invitations: await connection!`SELECT id, status, token_hash FROM invitations WHERE workspace_id = ${workspaceId} ORDER BY id`,
+  });
+
+  beforeEach(async () => {
+    await connection!.unsafe('TRUNCATE workspaces, "user" CASCADE');
+  });
+
+  it('creates Beta beside an owned Acme: Beta\'s Owner has no access to Acme, Acme is untouched, a re-issue revokes only Beta\'s link, and an owned Beta refuses', async () => {
+    const first = runBootstrap(['--workspace', 'Acme'], scriptEnv());
+    expect(first.status, first.err).toBe(0);
+    expect((await acceptAs(tokenOf(linkOf(first.out)!), 'acme-owner@example.test')).status).toBe(201);
+    const [acme] = await connection!<{ id: string }[]>`SELECT id FROM workspaces WHERE name = 'Acme'`;
+    const acmeBefore = await snapshot(acme!.id);
+
+    const created = runBootstrap(['--workspace', 'Beta'], scriptEnv());
+    expect(created.status, created.err).toBe(0);
+    expect(created.out).toMatch(/Created Workspace "Beta"/);
+    const betaToken1 = tokenOf(linkOf(created.out)!);
+    const [beta] = await connection!<{ id: string; assistant_instructions: string }[]>`SELECT id, assistant_instructions FROM workspaces WHERE name = 'Beta'`;
+    expect(beta!.assistant_instructions.length).toBeGreaterThan(0);
+    await expect(connection!`SELECT 1 FROM workspaces`).resolves.toHaveLength(2);
+
+    // Beta has no Owner yet: a re-issue by name revokes only Beta's earlier link.
+    const reissued = runBootstrap(['--workspace', ' beta'], scriptEnv());
+    expect(reissued.status, reissued.err).toBe(0);
+    expect(reissued.out).toMatch(/Re-issued the Owner Invitation for Workspace "Beta"/);
+    const betaToken2 = tokenOf(linkOf(reissued.out)!);
+    const [old] = await connection!<{ status: string }[]>`SELECT status FROM invitations WHERE token_hash = ${hashInvitationToken(betaToken1)}`;
+    expect(old!.status).toBe('revoked');
+    expect((await acceptAs(betaToken1, 'late@example.test')).status).toBe(404);
+    expect(await snapshot(acme!.id)).toEqual(acmeBefore);
+
+    // Accepting makes an Owner of Beta only.
+    expect((await acceptAs(betaToken2, 'beta-owner@example.test')).status).toBe(201);
+    const [member] = await connection!<{ user_id: string; workspace_id: string; role: string }[]>`
+      SELECT m.* FROM memberships m JOIN "user" u ON u.id = m.user_id WHERE u.email = 'beta-owner@example.test'`;
+    expect(member).toMatchObject({ workspace_id: beta!.id, role: 'owner' });
+    const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+    await expect(queries.authorizedWorkspace(member!.user_id, beta!.id)).resolves.toMatchObject({ id: beta!.id, name: 'Beta' });
+    await expect(queries.authorizedWorkspace(member!.user_id, acme!.id)).resolves.toBeNull();
+    expect(await snapshot(acme!.id)).toEqual(acmeBefore);
+
+    // Beta now has an Owner: its name refuses and writes nothing.
+    const before = await connection!`SELECT (SELECT count(*) FROM workspaces)::int AS w, (SELECT count(*) FROM invitations)::int AS i`;
+    const refused = runBootstrap(['--workspace', 'BETA'], scriptEnv());
+    expect(refused.status).toBe(1);
+    expect(refused.err).toMatch(/"Beta" already has an Owner/);
+    expect(linkOf(refused.out)).toBeUndefined();
+    expect(await connection!`SELECT (SELECT count(*) FROM workspaces)::int AS w, (SELECT count(*) FROM invitations)::int AS i`).toEqual(before);
   });
 });

@@ -22,6 +22,7 @@ It stays a small, finished codebase: one increment at a time, each its own PR wi
 - Assistant replies and the Reasoning trace render a safe Markdown subset; User messages stay plain text (ADR-0006).
 - Persistent, private Conversations with a list, rename and delete.
 - Owner and Member roles; single-use Invitations; members screen.
+- The Deployer creates Workspaces, one per name, with `bootstrap --workspace "Name"`, each with a single-use Owner Invitation; the same command re-issues it while the Workspace has no Owner.
 - Avatar: each User uploads one picture on their Account page (initials otherwise), stored re-encoded in PostgreSQL and served only to the User and to Owners of a Workspace they belong to; the members screen shows it next to the role (ADR-0007).
 - Workspace settings: name and Assistant instructions (ADR-0004); Appearance presets (ADR-0003).
 - Usage limits per User per minute and per Workspace per day.
@@ -32,10 +33,10 @@ It stays a small, finished codebase: one increment at a time, each its own PR wi
 Order and status live in `.scratch/roadmap/roadmap.md`. In short:
 
 1. **Configurable AI provider** (issue #29, shipped: #32, #33, #34). One provider per deployment, chosen by environment variables; includes an OpenAI-compatible provider so a local model works.
-2. **Bootstrap and deployment.** A `bootstrap` script creates a Workspace and prints a single-use Owner Invitation link. Docker Compose (app and PostgreSQL) is the one supported deploy path; the README walks a Deployer from clone to first Conversation, and a CI job (`compose-smoke`) boots Compose with the fake provider, runs `bootstrap` and accepts the Owner Invitation without chatting (Compose is production-only, which refuses the fake provider).
+2. **Bootstrap and deployment.** A `bootstrap` script creates a Workspace (any number, by name) and prints a single-use Owner Invitation link, or re-issues it by name while the Workspace has no Owner. Docker Compose (app and PostgreSQL) is the one supported deploy path; the README walks a Deployer from clone to first Conversation, and a CI job (`compose-smoke`) boots Compose with the fake provider, runs `bootstrap` and accepts the Owner Invitation without chatting (Compose is production-only, which refuses the fake provider).
 3. **User Avatar** (issue #56, shipped).
 4. **User management** (decided 2026-11-27). The goal: a Deployer can run one instance with many Workspaces without editing the database. There are seven increments, in this order, and each gets its own spec and tickets when it starts:
-   1. The Deployer creates more Workspaces from the command line. Each new Workspace gets a single-use Owner Invitation link. Today `bootstrap` creates only the first Workspace.
+   1. The Deployer creates more Workspaces from the command line (shipped, issue #75): `bootstrap --workspace "Beta"` creates a Workspace and prints its single-use Owner Invitation link.
    2. Invitations for existing Users: a signed-in User joins another Workspace without creating a second account.
    3. Account: change name and password, and sign out other devices.
    4. Password reset issued by the Deployer: a command-line command prints a single-use reset link (ADR-0008).

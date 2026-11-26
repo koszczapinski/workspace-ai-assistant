@@ -36,15 +36,15 @@ APP_ENV=production DATABASE_URL=... npm run db:migrate -- --confirm-database <na
 
 `<name>` must equal the database in `DATABASE_URL` and the name the live connection reports (`current_database()`). Otherwise the command refuses and changes nothing. A missing or unknown `APP_ENV` is refused with or without the flag, and the flag does not relax the development or test rules. `db:seed` never runs in production. See the note in `docs/adr/0002-explicit-app-env.md`.
 
-**Deployer: first run (bootstrap).** On a migrated database, create the first Workspace and its Owner Invitation:
+**Deployer: create a Workspace (bootstrap).** On a migrated database, create a Workspace and its Owner Invitation:
 
 ```bash
 npm run bootstrap -- --workspace "Acme" [--confirm-database <name>]
 ```
 
-It prints "Created Workspace". If the 7 days pass before anyone opens the link, run the command again (`--workspace` is optional now): while the one Workspace still has no Owner, it creates nothing, prints "Re-issued the Owner Invitation", and gives a fresh link; earlier pending bootstrap Invitations are revoked, so only the newest link works. If `--workspace` is given it must equal the existing name (nothing is renamed). Once the Workspace has an Owner, or when more than one Workspace exists, it refuses and writes nothing.
+It prints "Created Workspace". To create another Workspace on the same instance, run it again with a new name, for example `npm run bootstrap -- --workspace "Beta"`; each Workspace gets its own Owner Invitation and the new Owner has no access to the others. If the 7 days pass before anyone opens a link, or you lost it, run the command again with the same name (matched ignoring case and surrounding spaces): while that Workspace still has no Owner, it creates nothing, prints "Re-issued the Owner Invitation", and gives a fresh link; that Workspace's earlier pending bootstrap Invitations are revoked, so only the newest link works. Without `--workspace` it re-issues only when exactly one Workspace has no Owner; otherwise it asks for a name. It refuses and writes nothing when the named Workspace already has an Owner (further Owners come from promoting a Member) or when two Workspaces carry the name.
 
-It prints a single-use Owner Invitation link, valid for 7 days, once; only a hash of its token is stored, so copy it now. The link is built from `BETTER_AUTH_URL`, which must be the public address of the app. Open it, create your account, and you are the Owner of the Workspace. The command uses the same database confirmation as `db:migrate` (`--confirm-database` is required with `APP_ENV=production`), validates the name like Workspace settings (1 to 60 characters), and never creates a second Workspace. Further Members come from the Invitations screen; an Owner promotes a Member to Owner on the Members screen.
+It prints a single-use Owner Invitation link, valid for 7 days, once; only a hash of its token is stored, so copy it now. The link is built from `BETTER_AUTH_URL`, which must be the public address of the app. Open it, create your account, and you are the Owner of the Workspace. The command uses the same database confirmation as `db:migrate` (`--confirm-database` is required with `APP_ENV=production`), validates the name like Workspace settings (1 to 60 characters), and creates a Workspace only for a name no Workspace has. Further Members come from the Invitations screen; an Owner promotes a Member to Owner on the Members screen.
 
 Each message is limited to 4,000 characters, each conversation request to 30 messages, and each HTTP request body to 64 KB. Requests over these limits are rejected before provider invocation.
 
@@ -135,7 +135,7 @@ In a second terminal:
 docker compose run --rm bootstrap --workspace "Acme"
 ```
 
-The `bootstrap` service is not started by `up`; it uses the same image and the same database confirmation as `migrate`. It prints "Created Workspace" and a single-use Owner Invitation link, valid for 7 days, once (only a hash of the token is stored, so copy it now). The link is built from `BETTER_AUTH_URL`. If the 7 days pass first, or you lost the link, run the command again (`--workspace` is optional then): while the Workspace has no Owner it creates nothing and prints a fresh link, and earlier pending bootstrap Invitations are revoked. Once the Workspace has an Owner it refuses and writes nothing. `--workspace` takes 1 to 60 characters.
+The `bootstrap` service is not started by `up`; it uses the same image and the same database confirmation as `migrate`. It prints "Created Workspace" and a single-use Owner Invitation link, valid for 7 days, once (only a hash of the token is stored, so copy it now). The link is built from `BETTER_AUTH_URL`. If the 7 days pass first, or you lost the link, run the command again (`--workspace` is optional only while exactly one Workspace has no Owner): while that Workspace has no Owner it creates nothing and prints a fresh link, and earlier pending bootstrap Invitations are revoked. Once the Workspace has an Owner it refuses and writes nothing. To create another Workspace, run `docker compose run --rm bootstrap --workspace "Beta"`; the same command with an existing name re-issues while that Workspace has no Owner. `--workspace` takes 1 to 60 characters.
 
 ### 4. Create the Owner and chat
 
@@ -148,7 +148,7 @@ The `bootstrap` service is not started by `up`; it uses the same image and the s
 - Stop with `docker compose down`. The database lives in the named volume `db-data`, so data survives `down` and `up`; `docker compose down -v` deletes it.
 - Compose runs with basic Usage limits only (see [Usage limits](#usage-limits)). Review them before any public exposure; this is not production-grade abuse protection.
 - The image (`Dockerfile`) has a `migrate` target (all dependencies, `scripts/`, `src/`, `db/`; used by `migrate` and `bootstrap`) and a default `runtime` target (the Next.js standalone server only). It holds no secrets: configuration arrives from `.env` when the containers start.
-- CI job `compose-smoke` builds this Compose setup with `AI_PROVIDER=fake`, runs `bootstrap`, accepts the Owner Invitation and signs in (`scripts/compose-smoke.sh`). It never chats, because `fake` is refused in production; streamed chat is covered by the Playwright journeys. Run it yourself with `scripts/compose-smoke.sh <env-file>`, an env file with the variables above and `AI_PROVIDER=fake`.
+- CI job `compose-smoke` builds this Compose setup with `AI_PROVIDER=fake`, runs `bootstrap`, accepts the Owner Invitation, signs in, and creates and joins a second Workspace with `bootstrap --workspace` (`scripts/compose-smoke.sh`). It never chats, because `fake` is refused in production; streamed chat is covered by the Playwright journeys. Run it yourself with `scripts/compose-smoke.sh <env-file>`, an env file with the variables above and `AI_PROVIDER=fake`.
 <!-- docker-compose:end -->
 
 ## Quality checks
