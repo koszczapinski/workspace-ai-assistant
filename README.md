@@ -151,6 +151,15 @@ The `bootstrap` service is not started by `up`; it uses the same image and the s
 - CI job `compose-smoke` builds this Compose setup with `AI_PROVIDER=fake`, runs `bootstrap`, accepts the Owner Invitation, signs in, and creates and joins a second Workspace with `bootstrap --workspace` (`scripts/compose-smoke.sh`). It never chats, because `fake` is refused in production; streamed chat is covered by the Playwright journeys. Run it yourself with `scripts/compose-smoke.sh <env-file>`, an env file with the variables above and `AI_PROVIDER=fake`.
 <!-- docker-compose:end -->
 
+## Where to look for errors
+
+- **Logs:** `docker compose logs app` (add `-f` to follow, `--since 10m` to narrow). The `db` and `migrate` services have their own logs the same way. A failed start-up usually shows in `migrate`.
+- **Health:** `GET /api/health` returns `{"status":"ok"}` with no sign-in. Compose uses it as the healthcheck of `app`, so `docker compose ps` shows `healthy` once the app serves requests. It is shallow on purpose: it does not query the database, so a short database outage does not restart the app container. A database problem shows in the `db` logs and as errors on pages that need data.
+- **Log size:** every Compose service keeps at most 5 files of 10 MB (`logging:` in `docker-compose.yml`), so logs cannot fill the disk. Older lines are dropped.
+- **What the app logs on purpose:** fixed messages only, currently `The AI provider failed` and `Failed to save a Conversation turn`. They carry no message text, no Assistant instructions and no provider response. The health endpoint returns no environment, version or user data.
+- **What is not logged:** the app never writes Conversation or message text to its logs, so an Owner's view of a Member's private Conversations is not reachable through logs either (a Conversation is private to its User, with no exception for Owners). Secrets in `.env` are not printed. Some failures in the chat route are not logged at all yet, so an empty log does not prove that nothing went wrong.
+- **Not covered:** the runtime itself (Next.js and Node) still prints its own start-up lines and uncaught-error stack traces to the same log. Treat the raw log as sensitive operational data and do not paste it into public issues unreviewed. There is no alerting or error tracking.
+
 ## Quality checks
 
 Run all gates from the repository root:
