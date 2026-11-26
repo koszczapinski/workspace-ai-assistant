@@ -20,9 +20,18 @@ Do not add TanStack Query or a global state library unless there is a demonstrat
 
 Work in small, finished increments toward a self-hosted starter (ADR-0005). Prefer a narrow, finished implementation over extra features.
 
-Planned, in order (see `.scratch/roadmap/roadmap.md`): configurable AI provider (#29), bootstrap script and Docker Compose, then RAG with file uploads and a vector store inside PostgreSQL. Do not start a planned item unless its issue is the task.
+Planned, in order (see `.scratch/roadmap/roadmap.md`), first a User-management series:
+1. the Deployer creates more Workspaces from the command line;
+2. Invitations for existing Users;
+3. Account name, password, and signing out other devices;
+4. password reset issued by the Deployer;
+5. an audit log of Owner actions;
+6. deleting your own account;
+7. per-Workspace Usage limits.
 
-Out of scope: billing, tools or function calling, public signup, Workspace creation in the UI, inviting existing Users, email delivery of Invitations, password reset, more than two roles, model selection, per-Workspace AI configuration, and production-grade abuse protection.
+RAG follows the series: file uploads and a vector store inside PostgreSQL. Do not start a planned item unless its issue is the task.
+
+Out of scope: billing, tools or function calling, public signup, Workspace creation in the UI, sending email of any kind, including self-service password reset (ADR-0008), sign-in through OAuth providers, two-factor authentication, more than two roles, model selection, per-Workspace AI configuration, and production-grade abuse protection.
 
 A Conversation is stored in PostgreSQL, owned by one User in one Workspace, and private to that User; no other Member, including an Owner, can read it. Chat messages are stored only as part of that private Conversation.
 
