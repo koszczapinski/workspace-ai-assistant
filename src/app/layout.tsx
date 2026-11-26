@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import UserMenu from "@/components/user-menu";
-import { avatarUrl } from "@/lib/avatar-url";
+import { avatarSrc } from "@/lib/avatar-url";
 import { currentSession } from "@/lib/session";
 import { avatarStore } from "@/lib/avatar-store";
 import ThemeToggle from "@/components/theme-toggle";
@@ -53,7 +53,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
                   <UserMenu
                     name={session.user.name}
                     email={session.user.email}
-                    avatarSrc={avatarVersion ? avatarUrl(session.user.id, avatarVersion) : null}
+                    avatarSrc={avatarSrc(session.user.id, avatarVersion)}
                   />
                 )}
               </div>

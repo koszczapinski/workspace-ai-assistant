@@ -1,6 +1,6 @@
 import { redirect } from 'next/navigation';
 import { Avatar } from '@/components/avatar';
-import { avatarUrl } from '@/lib/avatar-url';
+import { avatarSrc } from '@/lib/avatar-url';
 import { avatarStore } from '@/lib/avatar-store';
 import { currentSession } from '@/lib/session';
 import { AvatarForm } from './avatar-form';
@@ -19,7 +19,7 @@ export default async function AccountPage() {
         <h1 className="gradient-heading mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">Account</h1>
         <hr className="gradient-divider my-7" />
         <div className="flex items-center gap-4">
-          <Avatar name={name} src={avatarVersion ? avatarUrl(id, avatarVersion) : null} className="size-16 text-xl" />
+          <Avatar name={name} src={avatarSrc(id, avatarVersion)} className="size-16 text-xl" />
           <div className="min-w-0">
             <p className="truncate text-lg font-medium">{name}</p>
             <p className="truncate text-sm text-muted-foreground">{email}</p>

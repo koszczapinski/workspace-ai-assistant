@@ -5,7 +5,7 @@ import { ArrowLeft } from 'lucide-react';
 import { authorizeWorkspaceOwner } from '@/lib/authorization';
 import { Avatar } from '@/components/avatar';
 import { avatarStore } from '@/lib/avatar-store';
-import { avatarUrl } from '@/lib/avatar-url';
+import { avatarSrc } from '@/lib/avatar-url';
 import { invitationStore } from '@/lib/invitation-store';
 import type { MemberRole } from '@/lib/member-types';
 import { listMembers } from '@/lib/workspaces';
@@ -43,7 +43,7 @@ export default async function Members({ params }: { params: Promise<{ workspaceI
             <li key={member.userId} className="workspace-card flex-wrap">
               <Avatar
                 name={member.name}
-                src={avatarVersions[index] ? avatarUrl(member.userId, avatarVersions[index]) : null}
+                src={avatarSrc(member.userId, avatarVersions[index])}
                 className="size-11 text-sm"
               />
               <span className="min-w-0 flex-1">

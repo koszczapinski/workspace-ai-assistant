@@ -351,6 +351,10 @@ it.skipIf(!testDatabaseUrl)('an Owner is the Owner of a Member only while they s
     await expect(queries.isOwnerOfMember('avatar-owner-x', 'avatar-member-x')).resolves.toBe(true);
     await expect(queries.isOwnerOfMember('avatar-member-x', 'avatar-owner-x')).resolves.toBe(false);
     await expect(queries.isOwnerOfMember('avatar-owner-x', 'nobody')).resolves.toBe(false);
+    // An Owner of a different Workspace only (no shared Workspace with the target) gets false.
+    await withExtraUsers(['avatar-other-owner-x'], 'workspace-b', ['owner'], async () => {
+      await expect(queries.isOwnerOfMember('avatar-other-owner-x', 'avatar-member-x')).resolves.toBe(false);
+    });
     await queries.removeMember('workspace-a', 'avatar-member-x');
     await expect(queries.isOwnerOfMember('avatar-owner-x', 'avatar-member-x')).resolves.toBe(false);
   });

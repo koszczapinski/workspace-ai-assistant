@@ -199,8 +199,18 @@ describe('GET /api/users/[userId]/avatar', () => {
       expect(res.headers.get('cache-control')).toMatch(/^private\b/);
     });
 
-    it('answers 404 for an Owner of a different Workspace and for a plain Member of a shared one', async () => {
-      const h = setup({ actor: 'someone', ownerOf: [['owner-1', 'user-b']] });
+    it('answers 404 for an Owner of a different Workspace', async () => {
+      const h = setup({ actor: 'owner-2', ownerOf: [['owner-1', 'user-b'], ['owner-2', 'user-c']] });
+      withAvatar(h);
+
+      const res = await read('user-b')(h);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'Not found' });
+    });
+
+    it('answers 404 for a plain Member of a shared Workspace', async () => {
+      const h = setup({ actor: 'member-2', ownerOf: [['owner-1', 'user-b'], ['owner-1', 'member-2']] });
       withAvatar(h);
 
       const res = await read('user-b')(h);
