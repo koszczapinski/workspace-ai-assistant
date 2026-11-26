@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Compose smoke test (CI job `compose-smoke`; runnable locally with Docker and an env file).
-# Builds and starts Compose with AI_PROVIDER=fake (AI config is only checked on the first chat request),
+# Builds and starts Compose (including the profile-gated bootstrap image, which `up --build` skips) with AI_PROVIDER=fake (AI config is only checked on the first chat request),
 # runs `bootstrap`, accepts the printed Owner Invitation, signs in, creates and joins a second Workspace, uploads an Avatar (which proves `sharp` works in the
 # image), and never chats.
 # Usage: scripts/compose-smoke.sh <env-file>   (the file must set BETTER_AUTH_URL to http://localhost:<APP_PORT>)
@@ -18,6 +18,8 @@ JAR2="$(mktemp)"
 trap '"${COMPOSE[@]}" logs --no-color || true; "${COMPOSE[@]}" down -v --remove-orphans || true; rm -f "$JAR" "$JAR2"' EXIT
 
 "${COMPOSE[@]}" up -d --build
+# `up --build` skips the `tools` profile, so build the bootstrap image too: otherwise `run` reuses a stale local image.
+"${COMPOSE[@]}" --profile tools build bootstrap
 
 echo "Waiting for the app..."
 for _ in $(seq 1 60); do
