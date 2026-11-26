@@ -1,5 +1,5 @@
-import { createLogger } from '@/lib/logger';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createLogger } from '@/lib/logger';
 import { streamAssistant } from '@/lib/provider';
 import type { UIMessage, UIMessageChunk } from 'ai';
 

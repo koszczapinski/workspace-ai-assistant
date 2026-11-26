@@ -517,7 +517,7 @@ describe('POST /api/chat failure logging', () => {
     const conversations = { history: vi.fn(async () => { throw drizzleError(); }), saveTurn: vi.fn(async () => {}) };
     const post = createChatPost({ conversations, getSession: async () => sessionUser, authorize: authorizedAccess, stream: async () => reply(), limiter: allowAll, log });
 
-    const response = await post(makeRequest([say(SENTINEL)], { conversationId: 'conversation-1' }));
+    const response = await post(makeRequest([say(SENTINEL)], { conversationId: '3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f' }));
 
     expect(response.status).toBe(503);
     expect(await response.json()).toEqual({ error: 'Assistant unavailable' });
@@ -530,7 +530,7 @@ describe('POST /api/chat failure logging', () => {
       pgCode: '57P01',
       userId: 'user-a',
       workspaceId: 'workspace-a',
-      conversationId: 'conversation-1',
+      conversationId: '3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f',
     });
     expect(JSON.parse(lines[0]!).requestId).toEqual(expect.any(String));
     expect(lines.join('')).not.toContain(SENTINEL);

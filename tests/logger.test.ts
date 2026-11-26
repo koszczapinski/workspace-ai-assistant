@@ -17,7 +17,7 @@ describe('logger', () => {
       requestId: 'req-1',
       userId: 'u1',
       workspaceId: 'w1',
-      conversationId: 'c1',
+      conversationId: '3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f',
       error: new TypeError('boom'),
     });
 
@@ -30,7 +30,7 @@ describe('logger', () => {
       requestId: 'req-1',
       userId: 'u1',
       workspaceId: 'w1',
-      conversationId: 'c1',
+      conversationId: '3f2b8c1e-5d4a-4e6b-9c7d-1a2b3c4d5e6f',
       errorClass: 'TypeError',
     });
     expect(Object.keys(entry).sort()).toEqual(
@@ -48,5 +48,15 @@ describe('logger', () => {
 
     expect(JSON.parse(lines[0])).toMatchObject({ errorClass: 'Error', pgCode: '23505' });
     expect(lines.join('')).not.toContain('SENTINEL');
+  });
+
+  it('drops fields outside the schema and a conversationId that is not a UUID', () => {
+    const { lines, log } = capture();
+    const smuggled = { event: 'chat.history_failed', route: '/api/chat', requestId: 'r', conversationId: 'SENTINEL typed by the client', text: 'SENTINEL' } as never;
+
+    log.event(smuggled);
+
+    expect(lines.join('')).not.toContain('SENTINEL');
+    expect(JSON.parse(lines[0]!)).not.toHaveProperty('conversationId');
   });
 });

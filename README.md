@@ -183,7 +183,7 @@ Each line carries only these fields:
 | `pgCode` | The Postgres error code (for example `23505`), when the error or its cause has one |
 | `userId`, `workspaceId`, `conversationId` | IDs, when known |
 
-Never logged, by design: message text, Assistant instructions, the `message` of any error (a Drizzle query error's message contains the SQL and its bound parameters, so it would leak the Conversation), request bodies, headers, cookies, and secrets. The logger accepts only the fields above, and tests feed a sentinel string through the failure paths and assert it appears in no line.
+`conversationId` is logged only when it is a well-formed UUID, because the client chooses the id it asks for. Never logged, by design: message text, Assistant instructions, the `message` of any error (a Drizzle query error's message contains the SQL and its bound parameters, so it would leak the Conversation), request bodies, headers, cookies, and secrets. The logger accepts only the fields above, and tests feed a sentinel string through the failure paths and assert it appears in no line.
 
 ## Usage limits
 
