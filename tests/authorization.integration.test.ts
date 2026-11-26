@@ -345,6 +345,17 @@ it.skipIf(!testDatabaseUrl)('changes a Member role and removes a Membership only
   });
 });
 
+it.skipIf(!testDatabaseUrl)('an Owner is the Owner of a Member only while they share a Workspace where the first is Owner', async () => {
+  const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
+  await withExtraUsers(['avatar-owner-x', 'avatar-member-x'], 'workspace-a', ['owner', 'member'], async () => {
+    await expect(queries.isOwnerOfMember('avatar-owner-x', 'avatar-member-x')).resolves.toBe(true);
+    await expect(queries.isOwnerOfMember('avatar-member-x', 'avatar-owner-x')).resolves.toBe(false);
+    await expect(queries.isOwnerOfMember('avatar-owner-x', 'nobody')).resolves.toBe(false);
+    await queries.removeMember('workspace-a', 'avatar-member-x');
+    await expect(queries.isOwnerOfMember('avatar-owner-x', 'avatar-member-x')).resolves.toBe(false);
+  });
+});
+
 it.skipIf(!testDatabaseUrl)('removing a Membership leaves the User their other Workspaces', async () => {
   const queries = createWorkspaceQueries(drizzle(connection!, { schema }));
   await withExtraUsers(['multi-test-x'], 'workspace-a', ['member'], async () => {

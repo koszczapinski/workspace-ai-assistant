@@ -11,7 +11,7 @@ vi.mock('next/headers', () => ({ headers: requestHeaders }));
 vi.mock('../src/lib/auth', () => ({
   auth: { api: { getSession } },
 }));
-vi.mock('../src/lib/workspaces', () => ({ authorizedWorkspace: query, ownedWorkspace: owned }));
+vi.mock('../src/lib/workspaces', () => ({ authorizedWorkspace: query, ownedWorkspace: owned, isOwnerOfMember: vi.fn() }));
 
 import { authorizeWorkspace, authorizeWorkspaceForUser, authorizeWorkspaceOwner } from '../src/lib/authorization';
 

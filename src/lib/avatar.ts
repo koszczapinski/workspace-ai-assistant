@@ -80,17 +80,20 @@ type UserAvatarContext = { params: Promise<{ userId: string }> };
 const notFound = () => Response.json({ error: 'Not found' }, { status: 404 });
 
 /**
- * Serves one User's Avatar to the signed-in User themselves. Every refusal, including no Avatar, is the same 404, so
+ * Serves one User's Avatar to the User themselves and to an Owner of a Workspace they are a Member of. Every refusal, including no Avatar, is the same 404, so
  * the endpoint never reveals whether a User exists. Clients add `?v=<updatedAt>` so a change shows at once.
  */
-export function createUserAvatarHandlers({ getSession, store }: AvatarDeps) {
+export function createUserAvatarHandlers({ getSession, store, isOwnerOfMember }: AvatarDeps & {
+  /** True only while the first User is an Owner of a Workspace in which the second has a Membership. */
+  isOwnerOfMember: (ownerId: string, memberId: string) => Promise<boolean>;
+}) {
   return {
     async GET(_request: Request, { params }: UserAvatarContext): Promise<Response> {
       const session = await getSession();
       if (!session) return unauthenticated();
 
       const { userId } = await params;
-      if (userId !== session.user.id) return notFound();
+      if (userId !== session.user.id && !(await isOwnerOfMember(session.user.id, userId))) return notFound();
       const avatar = await store.find(userId);
       if (!avatar) return notFound();
 

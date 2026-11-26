@@ -22,6 +22,7 @@ It stays a small, finished codebase: one increment at a time, each its own PR wi
 - Assistant replies and the Reasoning trace render a safe Markdown subset; User messages stay plain text (ADR-0006).
 - Persistent, private Conversations with a list, rename and delete.
 - Owner and Member roles; single-use Invitations; members screen.
+- Avatar: each User uploads one picture on their Account page (initials otherwise), stored re-encoded in PostgreSQL and served only to the User and to Owners of a Workspace they belong to; the members screen shows it next to the role (ADR-0007).
 - Workspace settings: name and Assistant instructions (ADR-0004); Appearance presets (ADR-0003).
 - Usage limits per User per minute and per Workspace per day.
 - Explicit environment (`APP_ENV`) and database safety rules (ADR-0002).

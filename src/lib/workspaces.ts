@@ -1,4 +1,5 @@
 import { and,asc,eq,sql } from 'drizzle-orm';
+import { alias } from 'drizzle-orm/pg-core';
 import { db } from './db'; import type { MemberChangeResult, MemberRole } from './member-types';
 import { memberships,user,workspaces } from './schema';
 import type { WorkspaceSettings } from './workspace-settings';
@@ -52,6 +53,17 @@ export function createWorkspaceQueries(database: typeof db) {
         .returning({ name: workspaces.name, assistantInstructions: workspaces.assistantInstructions });
       if (!saved) throw new Error('Workspace not found');
       return saved;
+    },
+    /** Whether `ownerId` is an Owner of at least one Workspace in which `memberId` has a Membership. */
+    async isOwnerOfMember(ownerId: string, memberId: string) {
+      if (!database) return false;
+      const target = alias(memberships, 'target_membership');
+      const [row] = await database.select({ workspaceId: memberships.workspaceId })
+        .from(memberships)
+        .innerJoin(target, eq(target.workspaceId, memberships.workspaceId))
+        .where(and(eq(memberships.userId, ownerId), eq(memberships.role, 'owner'), eq(target.userId, memberId)))
+        .limit(1);
+      return Boolean(row);
     },
     /** The stored Appearance of one Workspace (raw preset text; resolve it with `resolveAppearance`), or null if it does not exist. */
     async getAppearance(workspaceId: string) {
@@ -130,6 +142,7 @@ export const ownedWorkspace = workspaceQueries.ownedWorkspace;
 export const workspaceSettings = workspaceQueries.workspaceSettings;
 export const updateWorkspaceSettings = workspaceQueries.updateWorkspaceSettings;
 export const getAppearance = workspaceQueries.getAppearance;
+export const isOwnerOfMember = workspaceQueries.isOwnerOfMember;
 export const listMembers = workspaceQueries.listMembers;
 export const changeRole = workspaceQueries.changeRole;
 export const removeMember = workspaceQueries.removeMember;

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { createAccountAvatarHandlers, createUserAvatarHandlers, type AvatarStore } from '../src/lib/avatar';
 
 // Fake world: the Session belongs to `actor` (null = no Session); avatars live in an in-memory map.
-function setup(options: { actor?: string | null } = {}) {
+function setup(options: { actor?: string | null; ownerOf?: [string, string][] } = {}) {
   const actor = options.actor === undefined ? 'user-a' : options.actor;
   const saved = new Map<string, { bytes: Uint8Array; updatedAt: Date }>();
   let clock = 0;
@@ -18,7 +18,10 @@ function setup(options: { actor?: string | null } = {}) {
     async remove(userId) { saved.delete(userId); },
   };
   const getSession = async () => (actor ? { user: { id: actor } } : null);
-  return { ...createAccountAvatarHandlers({ getSession, store }), ...createUserAvatarHandlers({ getSession, store }), saved };
+  // `ownerOf` lists [owner, member] pairs that currently share a Workspace where the first is an Owner.
+  const ownerPairs = options.ownerOf ?? [];
+  const isOwnerOfMember = async (ownerId: string, memberId: string) => ownerPairs.some(([o, m]) => o === ownerId && m === memberId);
+  return { ...createAccountAvatarHandlers({ getSession, store }), ...createUserAvatarHandlers({ getSession, store, isOwnerOfMember }), saved, ownerPairs };
 }
 
 async function png(width = 64, height = 64) {
@@ -180,5 +183,46 @@ describe('GET /api/users/[userId]/avatar', () => {
       expect(res.status).toBe(404);
       expect(await res.json()).toEqual({ error: 'Not found' });
     }
+  });
+
+  describe('for an Owner reading a Member', () => {
+    const withAvatar = (h: ReturnType<typeof setup>) => h.saved.set('user-b', { bytes: new Uint8Array([1, 2, 3]), updatedAt: new Date() });
+
+    it('serves the Avatar of a Member of a Workspace the Owner owns', async () => {
+      const h = setup({ actor: 'owner-1', ownerOf: [['owner-1', 'user-b']] });
+      withAvatar(h);
+
+      const res = await read('user-b')(h);
+
+      expect(res.status).toBe(200);
+      expect(res.headers.get('content-type')).toBe('image/webp');
+      expect(res.headers.get('cache-control')).toMatch(/^private\b/);
+    });
+
+    it('answers 404 for an Owner of a different Workspace and for a plain Member of a shared one', async () => {
+      const h = setup({ actor: 'someone', ownerOf: [['owner-1', 'user-b']] });
+      withAvatar(h);
+
+      const res = await read('user-b')(h);
+
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'Not found' });
+    });
+
+    it('answers 404 when the Member has no Avatar', async () => {
+      const h = setup({ actor: 'owner-1', ownerOf: [['owner-1', 'user-b']] });
+
+      expect((await read('user-b')(h)).status).toBe(404);
+    });
+
+    it('answers 404 as soon as the Membership is removed', async () => {
+      const h = setup({ actor: 'owner-1', ownerOf: [['owner-1', 'user-b']] });
+      withAvatar(h);
+      expect((await read('user-b')(h)).status).toBe(200);
+
+      h.ownerPairs.length = 0;
+
+      expect((await read('user-b')(h)).status).toBe(404);
+    });
   });
 });
