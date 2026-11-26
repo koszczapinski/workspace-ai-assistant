@@ -9,6 +9,7 @@ import { conversationStore, type ConversationStore, type StoredMessage } from '@
 import { streamAssistant, type AssistantInput, type AssistantStream } from '@/lib/provider';
 import { usageLimiter, type UsageLimiter } from '@/lib/usage-limiter';
 import { readBoundedBytes } from '@/lib/bounded-body';
+import { logger, type Logger } from '@/lib/logger';
 
 const MAX_PROMPT_MESSAGES = 30;
 const messagePartsSchema = z.array(z.object({ type: z.literal('text'), text: z.string().max(4000) })).max(20)
@@ -32,7 +33,10 @@ type ChatDependencies = {
   conversations: Pick<ConversationStore, 'history' | 'saveTurn'>;
   stream: (input: AssistantInput) => Promise<AssistantStream> | AssistantStream;
   now?: () => Date;
+  log?: Logger;
 };
+
+const ROUTE = '/api/chat';
 
 async function readBoundedBody(request: Request): Promise<string | null> {
   const bytes = await readBoundedBytes(request, MAX_BODY_BYTES);
@@ -41,14 +45,17 @@ async function readBoundedBody(request: Request): Promise<string | null> {
 
 export function createChatPost(dependencies: ChatDependencies) {
   const now = dependencies.now ?? (() => new Date());
+  const log = dependencies.log ?? logger;
   return async function POST(request: Request): Promise<Response> {
+    const requestId = randomUUID();
     const session = await dependencies.getSession(request);
     if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 });
 
     let body: string | null;
     try {
       body = await readBoundedBody(request);
-    } catch {
+    } catch (error) {
+      log.event({ event: 'chat.body_unreadable', route: ROUTE, status: 400, requestId, error, userId: session.user.id });
       return Response.json({ error: 'Malformed request body' }, { status: 400 });
     }
     if (body === null) return Response.json({ error: 'Request too large' }, { status: 413 });
@@ -56,7 +63,8 @@ export function createChatPost(dependencies: ChatDependencies) {
     let raw: unknown;
     try {
       raw = JSON.parse(body);
-    } catch {
+    } catch (error) {
+      log.event({ event: 'chat.body_malformed', route: ROUTE, status: 400, requestId, error, userId: session.user.id });
       return Response.json({ error: 'Malformed JSON' }, { status: 400 });
     }
     const parsed = requestSchema.safeParse(raw);
@@ -77,7 +85,8 @@ export function createChatPost(dependencies: ChatDependencies) {
     if (requestedConversationId) {
       try {
         stored = await dependencies.conversations.history(userId, workspaceId, requestedConversationId, MAX_PROMPT_MESSAGES - 1);
-      } catch {
+      } catch (error) {
+        log.event({ event: 'chat.history_failed', route: ROUTE, status: 503, requestId, error, userId, workspaceId, conversationId: requestedConversationId });
         return Response.json({ error: 'Assistant unavailable' }, { status: 503 });
       }
       // The same answer whether the Conversation is unknown or belongs to someone else.
@@ -93,7 +102,8 @@ export function createChatPost(dependencies: ChatDependencies) {
           { status: 429, headers: { 'Retry-After': String(retryAfterSeconds) } },
         );
       }
-    } catch {
+    } catch (error) {
+      log.event({ event: 'chat.limiter_failed', route: ROUTE, status: 503, requestId, error, userId, workspaceId, conversationId: requestedConversationId });
       return Response.json({ error: 'Assistant unavailable' }, { status: 503 });
     }
 
@@ -116,14 +126,17 @@ export function createChatPost(dependencies: ChatDependencies) {
         instructions: access.workspace.assistantInstructions,
         messages: prompt,
         signal: request.signal,
+        requestId,
       });
-    } catch {
+    } catch (error) {
+      log.event({ event: 'chat.stream_setup_failed', route: ROUTE, status: 503, requestId, error, userId, workspaceId, conversationId });
       return Response.json({ error: 'Assistant unavailable' }, { status: 503 });
     }
 
     return relayConversationReply({
       reply,
       conversationId,
+      onSaveFailed: error => log.event({ event: 'chat.save_failed', route: ROUTE, requestId, error, userId, workspaceId, conversationId }),
       save: ({ text, stopped }) => dependencies.conversations.saveTurn({
         conversationId,
         userId,

@@ -1,6 +1,7 @@
 import type { UIMessageChunk } from 'ai';
 import { describe, expect, it, vi } from 'vitest';
 import { createChatPost } from '@/app/api/chat/route';
+import { createLogger } from '@/lib/logger';
 
 /** A provider reply as UI message chunks; `wait` pauses the stream until the promise settles. */
 function replyOf(chunks: Array<UIMessageChunk | { wait: Promise<unknown> }>): ReadableStream<UIMessageChunk> {
@@ -415,10 +416,11 @@ describe('POST /api/chat', () => {
       ]);
     });
 
-    it('never names a Conversation whose turn failed to save, and keeps the content out of the log', async () => {
-      const conversations = { history: vi.fn(async () => null), saveTurn: vi.fn(async () => { throw new Error('db down'); }) };
-      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-      const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream: async () => reply('Secret reply'), limiter: allowAll });
+    it('never names a Conversation whose turn failed to save, and logs one line without its content', async () => {
+      const lines: string[] = [];
+      const log = createLogger({ write: line => { lines.push(line); } });
+      const conversations = { history: vi.fn(async () => null), saveTurn: vi.fn(async () => { throw Object.assign(new Error('Failed query: params: Secret reply Secret prompt'), { code: '08006' }); }) };
+      const post = createChatPost({ conversations, getSession: async () => user, authorize: authorized, stream: async () => reply('Secret reply'), limiter: allowAll, log });
 
       const events = await eventsOf(await post(makeRequest([say('Secret prompt')]))).rest();
 
@@ -426,8 +428,9 @@ describe('POST /api/chat', () => {
       expect(events.some(event => event.type === 'message-metadata')).toBe(false);
       expect(events.at(-1)).toEqual({ type: 'finish' });
       expect(JSON.stringify(events)).toContain('Secret reply');
-      expect(JSON.stringify(error.mock.calls)).not.toMatch(/Secret/);
-      error.mockRestore();
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]!)).toMatchObject({ event: 'chat.save_failed', route: '/api/chat', pgCode: '08006', userId: 'user-a', workspaceId: 'workspace-a' });
+      expect(lines.join('')).not.toMatch(/Secret/);
     });
 
     it('stores nothing and names nothing when the provider fails', async () => {
@@ -490,5 +493,89 @@ describe('POST /api/chat', () => {
       expect(stream).not.toHaveBeenCalled();
       expect(conversations.saveTurn).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('POST /api/chat failure logging', () => {
+  const SENTINEL = 'SENTINEL-conversation-text';
+  const sessionUser = { user: { id: 'user-a' } };
+  const say = (text: string) => ({ role: 'user', parts: [{ type: 'text', text }] });
+  const authorizedAccess = async () => ({ kind: 'authorized' as const, workspace: authorizedWorkspace });
+
+  function logging() {
+    const lines: string[] = [];
+    return { lines, log: createLogger({ write: line => { lines.push(line); } }) };
+  }
+
+  /** What a failed Drizzle query throws: the message carries the SQL and its bound parameters. */
+  function drizzleError() {
+    return Object.assign(new Error(`Failed query: insert into "messages" params: ${SENTINEL}`), { cause: Object.assign(new Error(SENTINEL), { code: '57P01' }) });
+  }
+
+  it('logs one content-free line when the history query fails, and the response is unchanged', async () => {
+    const { lines, log } = logging();
+    const conversations = { history: vi.fn(async () => { throw drizzleError(); }), saveTurn: vi.fn(async () => {}) };
+    const post = createChatPost({ conversations, getSession: async () => sessionUser, authorize: authorizedAccess, stream: async () => reply(), limiter: allowAll, log });
+
+    const response = await post(makeRequest([say(SENTINEL)], { conversationId: 'conversation-1' }));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Assistant unavailable' });
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({
+      event: 'chat.history_failed',
+      route: '/api/chat',
+      status: 503,
+      errorClass: 'Error',
+      pgCode: '57P01',
+      userId: 'user-a',
+      workspaceId: 'workspace-a',
+      conversationId: 'conversation-1',
+    });
+    expect(JSON.parse(lines[0]!).requestId).toEqual(expect.any(String));
+    expect(lines.join('')).not.toContain(SENTINEL);
+  });
+
+  it('logs one content-free line when the usage-limiter check fails, and the response is unchanged', async () => {
+    const { lines, log } = logging();
+    const limiter = { check: vi.fn(async () => { throw drizzleError(); }) };
+    const post = createChatPost({ conversations: emptyConversations(), getSession: async () => sessionUser, authorize: authorizedAccess, stream: async () => reply(), limiter, log });
+
+    const response = await post(makeRequest([say(SENTINEL)]));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Assistant unavailable' });
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ event: 'chat.limiter_failed', route: '/api/chat', status: 503, pgCode: '57P01', userId: 'user-a', workspaceId: 'workspace-a' });
+    expect(lines.join('')).not.toContain(SENTINEL);
+  });
+
+  it('logs one content-free line when the stream cannot be set up, and the response is unchanged', async () => {
+    const { lines, log } = logging();
+    const stream = vi.fn(async () => { throw new TypeError(`connect failed for ${SENTINEL}`); });
+    const post = createChatPost({ conversations: emptyConversations(), getSession: async () => sessionUser, authorize: authorizedAccess, stream, limiter: allowAll, log });
+
+    const response = await post(makeRequest([say(SENTINEL)]));
+
+    expect(response.status).toBe(503);
+    expect(await response.json()).toEqual({ error: 'Assistant unavailable' });
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ event: 'chat.stream_setup_failed', route: '/api/chat', status: 503, errorClass: 'TypeError', userId: 'user-a', workspaceId: 'workspace-a' });
+    expect(lines.join('')).not.toContain(SENTINEL);
+  });
+
+  it('logs one content-free line when the body cannot be read or parsed, and the response is unchanged', async () => {
+    const { lines, log } = logging();
+    const post = createChatPost({ conversations: emptyConversations(), getSession: async () => sessionUser, authorize: authorizedAccess, stream: async () => reply(), limiter: allowAll, log });
+    const broken = new ReadableStream({ pull: () => { throw new TypeError(`stream broke at ${SENTINEL}`); } });
+    const unreadable = new Request('http://localhost/api/chat', { method: 'POST', body: broken, duplex: 'half' } as RequestInit);
+    const notJson = new Request('http://localhost/api/chat', { method: 'POST', body: `{"text": "${SENTINEL}` });
+
+    const responses = [await post(unreadable), await post(notJson)];
+
+    expect(responses.map(response => response.status)).toEqual([400, 400]);
+    expect(lines.map(line => JSON.parse(line).event)).toEqual(['chat.body_unreadable', 'chat.body_malformed']);
+    expect(lines.map(line => JSON.parse(line).status)).toEqual([400, 400]);
+    expect(lines.join('')).not.toContain(SENTINEL);
   });
 });

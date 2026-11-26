@@ -10,6 +10,7 @@ import {
 } from 'ai';
 import { messageText } from './chat-message';
 import { isNonProductionAppEnv } from './environment-guard';
+import { logger, type Logger } from './logger';
 
 const MAX_FAKE_DELAY_MS = 5_000;
 
@@ -79,6 +80,8 @@ export type AssistantInput = {
   messages: UIMessage[];
   /** Aborted when the client disconnects (Stop or Cancel). */
   signal?: AbortSignal;
+  /** Correlates a failure log line with the request that caused it. */
+  requestId?: string;
 };
 
 /** The assistant's reply as UI message chunks: `start`, text, then `finish`, `abort` or `error`. */
@@ -117,7 +120,7 @@ function streamFakeAssistant(input: AssistantInput, delayMs: number): AssistantS
 }
 
 /** Provider adapter: owns model configuration and translates browser messages for the AI SDK. */
-export async function streamAssistant(input: AssistantInput): Promise<AssistantStream> {
+export async function streamAssistant(input: AssistantInput, log: Logger = logger): Promise<AssistantStream> {
   const config = readAiConfig(process.env);
   if (config.AI_PROVIDER === 'fake') return streamFakeAssistant(input, config.AI_FAKE_DELAY_MS);
 
@@ -126,8 +129,8 @@ export async function streamAssistant(input: AssistantInput): Promise<AssistantS
     system: input.instructions,
     messages: await convertToModelMessages(input.messages),
     abortSignal: input.signal,
-    // Replaces the SDK's default logging, which prints the provider's error. Content-free on purpose.
-    onError: () => console.error('The AI provider failed'),
+    // Replaces the SDK's default logging, which prints the provider's error. The logger records only its class.
+    onError: ({ error }) => log.event({ event: 'provider.stream_failed', route: '/api/chat', requestId: input.requestId ?? 'unknown', error }),
   });
   return result.toUIMessageStream({ onError: () => PROVIDER_FAILURE_MESSAGE });
 }

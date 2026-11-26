@@ -1,3 +1,4 @@
+import { createLogger } from '@/lib/logger';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { streamAssistant } from '@/lib/provider';
 import type { UIMessage, UIMessageChunk } from 'ai';
@@ -263,15 +264,18 @@ describe('provider failure mid-stream', () => {
   it.each(cases)('sends only the fixed message for %s', async (_name, env, fetchImpl) => {
     for (const [key, value] of Object.entries(env)) vi.stubEnv(key, value);
     vi.stubGlobal('fetch', vi.fn(fetchImpl));
-    const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const lines: string[] = [];
+    const log = createLogger({ write: line => { lines.push(line); } });
 
-    const chunks = await readAll(await streamAssistant({ instructions: 'Demo', messages: [secretMessage] }));
+    const chunks = await readAll(await streamAssistant({ instructions: 'Demo', messages: [secretMessage], requestId: 'req-1' }, log));
 
     const errors = chunks.filter(chunk => chunk.type === 'error');
     expect(errors).toEqual([{ type: 'error', errorText: FIXED_MESSAGE }]);
+    expect(lines).toHaveLength(1);
+    expect(JSON.parse(lines[0]!)).toMatchObject({ event: 'provider.stream_failed', route: '/api/chat', requestId: 'req-1' });
     for (const secret of secrets) {
       expect(JSON.stringify(chunks)).not.toContain(secret);
-      expect(JSON.stringify(logged.mock.calls)).not.toContain(secret);
+      expect(lines.join('')).not.toContain(secret);
     }
   });
 });
