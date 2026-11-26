@@ -7,7 +7,15 @@ Goal: a self-hosted starter (ADR-0005; living description in `docs/product.md`).
 1. **Configurable AI provider** (spec: GitHub issue #29, shipped; tickets #32 (PR #35), #33 (PR #36), #34). One provider per deployment, chosen by `AI_PROVIDER`, `AI_MODEL`, `AI_BASE_URL`, `AI_API_KEY`, `AI_FAKE_DELAY_MS`; includes an OpenAI-compatible provider, verified against LM Studio.
 2. **Bootstrap and deployment.** A `bootstrap` script creates a Workspace and prints a single-use Owner Invitation link (rules of ADR-0002). Docker Compose (app and PostgreSQL) is the one supported deploy path. Shipped: migrate, `bootstrap`, a Compose `bootstrap` service, the README Deployer walkthrough and the CI job `compose-smoke` (#42). Compose stays production-only; the walkthrough ends in a Conversation from the Deployer's real provider, and CI never chats.
 3. **User Avatar** (decided 2026-11-23, spec: GitHub issue #56; shipped through #60–#63: Account page upload, and Owners see Members' Avatars on the members screen). A User uploads one Avatar on a new Account page; initials otherwise. Re-encoded server-side to 256×256 WebP and stored in PostgreSQL (`user_avatar`, `bytea`), served only to the User and to Owners of a shared Workspace. Closes the open Better Auth `/update-user` path. Needs ADR-0007.
-4. **RAG.** Owner-uploaded Documents per Workspace, pgvector in the same PostgreSQL, embedding model per deployment. Decisions already taken are in `docs/product.md`; the spec comes when the increment starts.
+4. **User management** (decided 2026-11-27, with `/grill-with-docs`; ADR-0008). The goal: a Deployer can run one instance with many Workspaces without editing the database. Each increment gets its own short grill, spec and tickets when it starts. In this order:
+   0. **The Deployer creates more Workspaces** from the command line. A new command always creates a new Workspace and prints its single-use Owner Invitation link. `bootstrap` refuses once one Workspace has an Owner, so today an instance has in practice one Workspace.
+   1. **Invitations for existing Users.** A signed-in User joins another Workspace through an Invitation link without creating a second account.
+   2. **Account: name, password, and signing out other devices.** Changing the password requires the current one. The sign-out from other devices (originally "E") is merged into this increment.
+   3. **Password reset issued by the Deployer.** A command-line command prints a single-use reset link. There is no email and no "Forgot password?" (ADR-0008).
+   4. **Audit log of Owner actions.** It comes before 5 and 6 so that their events are logged from the start.
+   5. **Delete your own account.** The last Owner of a Workspace must hand over the role first.
+   6. **Per-Workspace Usage limits**, set by an Owner.
+5. **RAG.** Owner-uploaded Documents per Workspace, pgvector in the same PostgreSQL, embedding model per deployment. Decisions already taken are in `docs/product.md`; the spec comes when the increment starts.
 
 Tools and function calling stay out of scope until a separate decision after RAG.
 
@@ -36,12 +44,13 @@ Tools and function calling stay out of scope until a separate decision after RAG
 
 ## Later (not excluded, not yet ordered)
 
-- Per-Workspace Usage limits (configurable by an Owner).
-- An audit log of Owner actions (settings changes, Membership changes).
+- Optional email delivery (SMTP), starting with email verification (ADR-0008).
+
+Per-Workspace Usage limits and the audit log of Owner actions moved into the User-management series above.
 
 ## Not planned
 
-Billing; public signup; Workspace creation in the UI; model selection by Owners or Members; per-Workspace AI configuration and named model profiles (ADR-0005); permissions per Document.
+Billing; public signup; Workspace creation in the UI; email delivery for now (ADR-0008; optional SMTP, starting with email verification, may come later); sign-in through OAuth providers and two-factor authentication; model selection by Owners or Members; per-Workspace AI configuration and named model profiles (ADR-0005); permissions per Document.
 
 ## Glossary changes to land with the features
 
